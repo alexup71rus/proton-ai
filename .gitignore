@@ -1,0 +1,50 @@
+# Data (models, weights, training datasets, tokenizers)
+data/train/*
+data/weights/*
+data/models/*
+data/tokenizers/*
+data/.gitkeep
+!data/train/.gitkeep
+!data/weights/.gitkeep
+!data/models/.gitkeep
+!data/tokenizers/.gitkeep
+
+# Model artifacts
+*.gguf
+tokenizer.model
+tokenizer.vocab
+tokens.bin
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docs (local planning)
+docs/
+
+# Environment
+.env
+.env.local
