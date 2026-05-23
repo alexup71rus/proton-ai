@@ -1,4 +1,20 @@
-from fastapi import FastAPI
+import json
+
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+
+from protonx.config import TRAIN_DIR
+from protonx.routing.adapter import to_openai_tool_calls
+from protonx.routing.inference import preview_route, run_route
+from protonx.schemas import ChatCompletionsRequest
+from protonx.schemas import RoutePreviewRequest, RoutePreviewResponse
+from protonx.schemas import TrainStartRequest
+from protonx.schemas import ToolRegistryRequest, ToolRegistryResponse
+from protonx.training.dataset_builder import build_synthetic_dataset
+from protonx.training.state import TRAINING_STATE
+from protonx.training.trainer import run_training
+from protonx.tools import validate_supported_schema_subset, validate_unique_tool_names
 
 app = FastAPI(title="Proton-X LLM Service")
 
@@ -11,3 +27,48 @@ def health():
 @app.get("/")
 def root():
     return {"service": "proton-x-llm", "version": "0.1.0"}
+
+
+@app.post("/tools/validate", response_model=ToolRegistryResponse)
+def validate_tools(payload: ToolRegistryRequest) -> ToolRegistryResponse:
+    try:
+        validate_unique_tool_names(payload.tools)
+        validate_supported_schema_subset(payload.tools)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ToolRegistryResponse(valid=True, tool_count=len(payload.tools))
+
+
+@app.post("/route/preview", response_model=RoutePreviewResponse)
+def route_preview(payload: RoutePreviewRequest) -> RoutePreviewResponse:
+    return preview_route(payload)
+
+
+@app.post("/chat/completions")
+def chat_completions(payload: ChatCompletionsRequest) -> dict:
+    user_text = payload.messages[-1].content
+    decision = run_route(
+        RoutePreviewRequest(
+            user_text=user_text,
+            tools=payload.tools,
+            answer_allowed=payload.answer_allowed,
+        )
+    )
+    return to_openai_tool_calls(decision.final_output)
+
+
+@app.post("/train/dataset/build")
+def train_dataset_build(payload: ToolRegistryRequest) -> dict:
+    output_path = Path(TRAIN_DIR) / "routing.jsonl"
+    rows_written = build_synthetic_dataset(payload.tools, output_path)
+    return {"rows_written": rows_written, "output_path": str(output_path)}
+
+
+@app.get("/train/status")
+def train_status() -> dict:
+    return TRAINING_STATE.to_dict()
+
+
+@app.post("/train/start")
+def train_start(payload: TrainStartRequest) -> dict:
+    return run_training(Path(payload.dataset_path))
