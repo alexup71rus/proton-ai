@@ -53,6 +53,8 @@ def test_route_preview_returns_full_pipeline_fields(monkeypatch):
     payload = response.json()
     assert response.status_code == 200
     assert payload["candidate_tools"] == ["light"]
+    assert payload["confidence"] == "high"
+    assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "tool_call"
     assert payload["validation_error"] is None
 
@@ -94,5 +96,7 @@ def test_route_preview_falls_back_on_ambiguous_candidates_without_calling_model(
     )
     payload = response.json()
     assert response.status_code == 200
+    assert payload["confidence"] == "low"
+    assert payload["validator_result"]["valid"] is False
     assert payload["final_action"] == "fallback"
     assert payload["candidate_tools"] == ["light", "night_light"]

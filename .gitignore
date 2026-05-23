@@ -3,11 +3,13 @@ data/train/*
 data/weights/*
 data/models/*
 data/tokenizers/*
+data/tools/*
 data/.gitkeep
 !data/train/.gitkeep
 !data/weights/.gitkeep
 !data/models/.gitkeep
 !data/tokenizers/.gitkeep
+!data/tools/.gitkeep
 
 # Model artifacts
 *.gguf

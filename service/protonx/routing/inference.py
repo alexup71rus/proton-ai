@@ -24,6 +24,8 @@ class RoutingDecision:
     model_output: str
     repaired_output: str | None
     validation_error: str | None
+    validator_result: dict
+    confidence: str
     final_action: str
     final_output: dict
 
@@ -39,6 +41,8 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
             model_output="",
             repaired_output=None,
             validation_error=None,
+            validator_result={"valid": False, "error": "no candidate tools", "final_action": "fallback"},
+            confidence="low",
             final_action="fallback",
             final_output=build_fallback_payload(payload.answer_allowed),
         )
@@ -51,6 +55,12 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
                 model_output="",
                 repaired_output=None,
                 validation_error="low confidence candidate match",
+                validator_result={
+                    "valid": False,
+                    "error": "low confidence candidate match",
+                    "final_action": "fallback",
+                },
+                confidence="low",
                 final_action="fallback",
                 final_output=build_fallback_payload(payload.answer_allowed),
             )
@@ -91,6 +101,12 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
         model_output=model_output,
         repaired_output=repaired_output,
         validation_error=validation.error,
+        validator_result={
+            "valid": validation.valid,
+            "error": validation.error,
+            "final_action": validation.final_action,
+        },
+        confidence="high" if validation.valid else "low",
         final_action=validation.final_action,
         final_output=final_output,
     )
@@ -104,5 +120,7 @@ def preview_route(payload: RoutePreviewRequest) -> RoutePreviewResponse:
         model_output=decision.model_output,
         repaired_output=decision.repaired_output,
         validation_error=decision.validation_error,
+        validator_result=decision.validator_result,
+        confidence=decision.confidence,
         final_action=decision.final_action,
     )

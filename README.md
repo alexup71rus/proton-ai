@@ -1,20 +1,23 @@
 # Proton-X
 
-Платформа для одновременного обучения и тестирования языковых моделей.
+Платформа для сборки и проверки маленького `tool-router` для structured tool calling.
 
-## Архитектура
+## Что сейчас есть
 
-Два независимых сервиса:
+Текущий `v1` построен вокруг сценария:
 
-- **`service/`** — LLM-сервис (FastAPI). Инференс, управление моделями, обучение.
-- **`web/`** — Веб-интерфейс (Streamlit). Чат, управление датасетами, графики обучения.
+- создать tools registry
+- сгенерировать или импортировать dataset
+- запустить обучение tiny routing model
+- протестировать tool calling
+- разобрать fallback/error cases через logs
 
-## Режимы
+Это не general-purpose чат-модель. Это маленький router, где большая часть логики живёт в:
 
-| Режим | Описание |
-|-------|----------|
-| **Обучение** | Загрузка датасетов, запуск обучения, прогресс с графиками |
-| **Чат** | Общение с моделью, история, настройки (temperature, top_k) |
+- candidate filtering
+- validator
+- fallback policy
+- OpenAI-compatible adapter
 
 ## Структура проекта
 
@@ -22,17 +25,62 @@
 proton-x/
 ├── service/          # LLM-сервис (FastAPI)
 │   ├── main.py
+│   ├── protonx/      # Runtime, training, validation
 │   └── requirements.txt
-├── web/              # Веб-интерфейс (Streamlit)
+├── web_backend/      # UI backend / BFF (FastAPI)
 │   ├── app.py
+│   ├── requirements.txt
+│   └── tests/
+├── web_ui/           # Operator UI (React + Vite + TypeScript)
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.ts
+├── web/              # Legacy Streamlit UI stub
+│   ├── app.py
+│   ├── pages/
 │   └── requirements.txt
 ├── data/             # Данные (не в git)
-│   ├── train/        # Датасеты для обучения
-│   ├── weights/      # Веса моделей
-│   └── models/       # Готовые модели
+│   ├── tools/        # Tools registry file
+│   ├── train/        # Synthetic/imported datasets
+│   ├── tokenizers/
+│   ├── weights/
+│   └── logs/
 ├── docs/             # Документация и планы
 └── README.md
 ```
+
+## UI flow
+
+Новый интерфейс построен вокруг 4 экранов:
+
+- **Tools** — file-backed editor для registry tools
+- **Dataset + Training** — генерация датасета, импорт/экспорт, запуск обучения и прогресс
+- **Test** — основной экран проверки запроса и debug pipeline
+- **Logs** — человекочитаемые fallback/error cases
+
+Архитектура UI теперь такая:
+
+- `web_ui` — SPA на React/Vite
+- `web_backend` — BFF, который работает с файлами и проксирует runtime/training вызовы в `service`
+- `service` — source of truth для routing, preview, dataset build и training runtime
+
+## Tools registry
+
+Tools хранятся в обычном JSON/YAML-файле.
+
+Путь к файлу задаётся через env:
+
+```bash
+export PROTONX_TOOLS_FILE=/absolute/path/to/tools.json
+```
+
+Если env не задан, по умолчанию используется:
+
+```text
+data/tools/tools.json
+```
+
+UI редактирует этот файл, но файл остаётся source of truth и может правиться вручную.
 
 ## Быстрый старт
 
@@ -42,41 +90,78 @@ proton-x/
 # LLM-сервис
 cd service && pip install -r requirements.txt
 
-# Веб-интерфейс
-cd web && pip install -r requirements.txt
+# UI backend / BFF
+cd web_backend && pip install -r requirements.txt
+
+# Frontend
+cd web_ui && npm install
 ```
 
-### 2. Запуск
+### 2. Настроить data paths
 
 ```bash
-# Терминал 1 — LLM-сервис
-cd service && uvicorn main:app --reload --port 8000
-
-# Терминал 2 — Веб-интерфейс
-cd web && streamlit run app.py --server.port 8501
+cd /path/to/proton-x
+export PROTONX_TOOLS_FILE=$(pwd)/data/tools/tools.json
+export PROTONX_DATASET_DIR=$(pwd)/data/train/routing
+export PROTONX_ROUTER_LOG_FILE=$(pwd)/data/logs/router.jsonl
+export PROTONX_SERVICE_URL=http://127.0.0.1:8000
 ```
 
-### 3. Проверка
+### 3. Запуск
+
+Самый удобный вариант из корня репозитория:
+
+```bash
+make run-service
+make run-ui-backend
+make run-web-ui
+```
+
+Или одним процессом:
+
+```bash
+make run-dev
+```
+
+Если нужен ручной запуск без Makefile:
+
+```bash
+# Терминал 1
+cd service && uvicorn main:app --reload --port 8000
+
+# Терминал 2
+cd /path/to/proton-x && uvicorn web_backend.app:app --reload --port 8100
+
+# Терминал 3
+cd web_ui && npm run dev
+```
+
+### 4. Проверка
 
 - LLM-сервис: http://localhost:8000/health
+- UI backend: http://127.0.0.1:8100/api/tools
 - Веб-интерфейс: http://localhost:8501
+
+### 5. Legacy Streamlit
+
+Папка `web/` больше не является основным UI. Она оставлена только как legacy-notice, чтобы явно показывать, что старый Streamlit workflow снят с эксплуатации.
 
 ## Стек
 
 - Python 3.11+
 - FastAPI + Uvicorn
-- Streamlit
+- React 18 + TypeScript + Vite
 - PyTorch
-- SentencePiece (токенизатор, BPE/unigram, совместимость с Gemma)
+- SentencePiece
 - Transformers, Datasets, Accelerate, TRL
 - Safetensors, Einops
 
-## Архитектура модели
+## Текущая модель
 
-Gemma-стиль, ~30-80M параметров:
+Текущая baseline-модель — маленький causal decoder для routing-SFT.
 
-```
-Embedding → RoPE → 8 Transformer Blocks → RMSNorm → Linear
-```
+Это не Gemma-compatible architecture и не production LLM. Это учебный/инженерный baseline для:
 
-Параметры: `layers=8, hidden=512, heads=8, context=512, vocab=32000`
+- `top-k candidate tools`
+- structured output
+- validator-driven fallback

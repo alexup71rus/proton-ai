@@ -13,7 +13,7 @@ from protonx.schemas import TrainStartRequest
 from protonx.schemas import ToolRegistryRequest, ToolRegistryResponse
 from protonx.training.dataset_builder import build_synthetic_dataset
 from protonx.training.state import TRAINING_STATE
-from protonx.training.trainer import run_training
+from protonx.training.trainer import start_training_job
 from protonx.tools import validate_supported_schema_subset, validate_unique_tool_names
 
 app = FastAPI(title="Proton-X LLM Service")
@@ -71,4 +71,10 @@ def train_status() -> dict:
 
 @app.post("/train/start")
 def train_start(payload: TrainStartRequest) -> dict:
-    return run_training(Path(payload.dataset_path))
+    return start_training_job(
+        dataset_path=Path(payload.dataset_path),
+        epochs=payload.epochs,
+        batch_size=payload.batch_size,
+        model_name=payload.model_name,
+        tokenizer_name=payload.tokenizer_name,
+    )

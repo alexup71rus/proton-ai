@@ -39,6 +39,8 @@ class RoutePreviewResponse(BaseModel):
     model_output: str
     repaired_output: str | None
     validation_error: str | None
+    validator_result: dict[str, Any]
+    confidence: Literal["high", "low"]
     final_action: Literal["tool_call", "fallback"]
 
 
@@ -56,3 +58,7 @@ class ChatCompletionsRequest(BaseModel):
 
 class TrainStartRequest(BaseModel):
     dataset_path: str
+    epochs: int = 1
+    batch_size: int = 1
+    model_name: str = "tiny-router"
+    tokenizer_name: str = "sentencepiece-bpe"
