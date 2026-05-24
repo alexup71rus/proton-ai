@@ -6,11 +6,6 @@ from typing import Any
 
 FALLBACK_TOOL_NAME = "__fallback__"
 FALLBACK_TOOL_TAGS = ["fallback", "no tool", "unsupported", "unknown", "ambiguous", "chat"]
-FALLBACK_MESSAGE = "I work only with available tools."
-
-
-def build_dataset_system_contract(answer_allowed: bool) -> dict[str, Any]:
-    return {"answer_allowed": bool(answer_allowed)}
 
 
 def build_dataset_fallback_tool() -> dict[str, Any]:
@@ -26,12 +21,6 @@ def build_dataset_fallback_payload() -> dict[str, Any]:
     return {
         "tool_calls": [{"name": FALLBACK_TOOL_NAME, "arguments": {}}],
     }
-
-
-def build_dataset_fallback_response(answer_allowed: bool) -> str | None:
-    if not answer_allowed:
-        return None
-    return FALLBACK_MESSAGE
 
 
 def with_dataset_fallback_tool(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:

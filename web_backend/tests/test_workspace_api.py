@@ -21,7 +21,6 @@ def test_get_workspace_creates_default_file(tmp_path: Path, monkeypatch, client)
     }
     assert payload["test"] == {
         "user_text": "сделай свет потеплее",
-        "answer_allowed": False,
         "show_debug": False,
     }
     assert workspace_path.exists()
@@ -54,7 +53,6 @@ def test_put_workspace_persists_settings(tmp_path: Path, monkeypatch, client) ->
             },
             "test": {
                 "user_text": "turn on the lamp",
-                "answer_allowed": True,
                 "show_debug": True,
             },
         },
@@ -64,7 +62,10 @@ def test_put_workspace_persists_settings(tmp_path: Path, monkeypatch, client) ->
     payload = response.json()
     assert payload["selected_model"]["label"] == "custom_router"
     assert payload["training"]["epochs"] == 4
-    assert payload["test"]["answer_allowed"] is True
+    assert payload["test"] == {
+        "user_text": "turn on the lamp",
+        "show_debug": True,
+    }
 
     saved = json.loads(workspace_path.read_text(encoding="utf-8"))
     assert saved["selected_model"]["model_path"] == "/tmp/custom_router.pt"

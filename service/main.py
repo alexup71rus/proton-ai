@@ -1,5 +1,3 @@
-import json
-
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -51,7 +49,6 @@ def chat_completions(payload: ChatCompletionsRequest) -> dict:
         RoutePreviewRequest(
             user_text=user_text,
             tools=payload.tools,
-            answer_allowed=payload.answer_allowed,
             model_path=payload.model_path,
             tokenizer_path=payload.tokenizer_path,
         )

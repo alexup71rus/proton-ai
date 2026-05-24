@@ -66,6 +66,28 @@ def _sync_model_runtime_paths(
         MODEL_RUNTIME._clear_cached_runtime()
 
 
+def _append_fallback_log(
+    *,
+    user_text: str,
+    candidate_tools: list[str],
+    model_output: str,
+    repaired_output: str | None,
+    validation_error: str | None,
+    validator_result: dict,
+) -> None:
+    append_router_log(
+        {
+            "user_text": user_text,
+            "candidate_tools": candidate_tools,
+            "model_output": model_output,
+            "repaired_output": repaired_output,
+            "validation_error": validation_error,
+            "validator_result": validator_result,
+            "final_action": "fallback",
+        }
+    )
+
+
 def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
     scored_candidates = score_candidate_tools(payload.user_text, payload.tools)
     selected_candidates = select_candidate_tools(
@@ -81,25 +103,32 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
         top_score = scored_candidates[0][1]
         second_score = scored_candidates[1][1]
         if top_score > 0 and (top_score - second_score) <= 0:
+            validator_result = {
+                "valid": False,
+                "error": "low confidence candidate match",
+                "final_action": "fallback",
+            }
+            _append_fallback_log(
+                user_text=payload.user_text,
+                candidate_tools=[tool.name for tool in selected_candidates],
+                model_output="",
+                repaired_output=None,
+                validation_error="low confidence candidate match",
+                validator_result=validator_result,
+            )
             return RoutingDecision(
                 candidate_tools=[tool.name for tool in selected_candidates],
                 serialized_prompt="",
                 model_output="",
                 repaired_output=None,
                 validation_error="low confidence candidate match",
-                validator_result={
-                    "valid": False,
-                    "error": "low confidence candidate match",
-                    "final_action": "fallback",
-                },
+                validator_result=validator_result,
                 confidence="low",
                 final_action="fallback",
                 final_output=build_fallback_payload(),
             )
 
-    prompt = build_routing_prompt(
-        payload.user_text, candidates, payload.answer_allowed
-    )
+    prompt = build_routing_prompt(payload.user_text, candidates)
     serialized_prompt = serialize_inference_prompt(prompt)
     _sync_model_runtime_paths(payload.model_path, payload.tokenizer_path)
     model_output = MODEL_RUNTIME.generate(prompt)
@@ -107,20 +136,8 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
     validation = validate_model_output(
         candidates,
         repaired_output or "",
-        payload.answer_allowed,
         strict_mode=payload.strict_mode,
     )
-
-    if not validation.valid:
-        append_router_log(
-            {
-                "user_text": payload.user_text,
-                "candidate_tools": [tool.name for tool in selected_candidates],
-                "model_output": model_output,
-                "validation_error": validation.error,
-                "final_action": "fallback",
-            }
-        )
 
     if validation.final_action == "fallback" and repaired_output is None:
         repaired_output = model_output
@@ -131,17 +148,29 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
         final_output = validation.parsed_output
     else:
         final_output = build_fallback_payload()
+
+    validator_result = {
+        "valid": validation.valid,
+        "error": validation.error,
+        "final_action": validation.final_action,
+    }
+    if validation.final_action == "fallback":
+        _append_fallback_log(
+            user_text=payload.user_text,
+            candidate_tools=[tool.name for tool in selected_candidates],
+            model_output=model_output,
+            repaired_output=repaired_output,
+            validation_error=validation.error,
+            validator_result=validator_result,
+        )
+
     return RoutingDecision(
         candidate_tools=candidate_names,
         serialized_prompt=serialized_prompt,
         model_output=model_output,
         repaired_output=repaired_output,
         validation_error=validation.error,
-        validator_result={
-            "valid": validation.valid,
-            "error": validation.error,
-            "final_action": validation.final_action,
-        },
+        validator_result=validator_result,
         confidence="high" if validation.valid else "low",
         final_action=validation.final_action,
         final_output=final_output,
@@ -160,4 +189,5 @@ def preview_route(payload: RoutePreviewRequest) -> RoutePreviewResponse:
         validator_result=decision.validator_result,
         confidence=decision.confidence,
         final_action=decision.final_action,
+        final_output=decision.final_output,
     )

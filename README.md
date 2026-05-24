@@ -1,134 +1,46 @@
 # Proton-X
 
-Платформа для сборки и проверки маленького `tool-router` для structured tool calling.
+Proton-X — экспериментальная платформа для обучения маленьких специализированных моделей. Сейчас это не чат-бот, а базовое ядро tool calling: модель должна выбрать функцию и вернуть структурированный `tool_call`.
 
-## Назначение
+Идея обратная обычному пути: не сначала учить модель говорить, а потом добавлять tool calling, а сначала научить её надёжно выбирать инструменты, валидировать результат, исполнять функцию и собирать логи. Ответы, цепочки действий и поведение универсального ассистента могут появиться позже поверх этого ядра.
 
-Подробно про внутреннее устройство LLM-сервиса: [service/README.md](service/README.md)
-
-Рабочий цикл `v1`:
-
-- создать tools registry
-- выбрать dataset для обучения явным именем файла
-- выбрать активную модель через верхний toolbar и задать пути артефактов
-- запустить обучение или дообучение выбранной модели
-- протестировать tool calling
-- разобрать fallback/error cases через logs
-
-Это маленький router, где большая часть логики живёт в:
-
-- candidate filtering
-- validator
-- fallback policy
-- OpenAI-compatible adapter
-
-## Структура проекта
-
-```
-proton-x/
-├── service/          # LLM-сервис (FastAPI)
-│   ├── main.py
-│   ├── protonx/      # Runtime, training, validation
-│   └── requirements.txt
-├── web_backend/      # UI backend / BFF (FastAPI)
-│   ├── app.py
-│   ├── requirements.txt
-│   └── tests/
-├── web_ui/           # Operator UI (React + Vite + TypeScript)
-│   ├── src/
-│   ├── package.json
-│   └── vite.config.ts
-├── web/              # Legacy Streamlit UI stub
-│   ├── app.py
-│   ├── pages/
-│   └── requirements.txt
-├── data/             # Данные (не в git)
-│   ├── tools/        # Tools registry file
-│   ├── train/        # Synthetic/imported datasets
-│   ├── tokenizers/
-│   ├── weights/
-│   └── logs/
-├── docs/             # Документация и планы
-└── README.md
-```
-
-## Интерфейс
-
-Интерфейс состоит из четырёх основных экранов:
-
-- **Tools** — редактор файла с реестром инструментов
-- **Dataset + Training** — явный выбор dataset, запуск обучения/дообучения активной модели и отображение прогресса
-- **Test** — основной экран для проверки запросов на текущей выбранной модели и просмотра отладочного пайплайна
-- **Logs** — просмотр fallback- и error-case сценариев в читаемом виде
-
-Состояние model workspace хранится в `web_backend` и сериализуется в файл настроек:
-
-- `data/workspace/settings.json`
-- путь можно переопределить через `PROTONX_WORKSPACE_FILE`
-- фронтенд читает и обновляет этот файл через `/api/workspace`
-- `localStorage` для выбранной модели, training defaults и test-page state не используется
-
-Управление активной моделью находится в верхнем toolbar:
-
-- `Create model` — задаёт новую архитектуру tiny-router и целевые пути сохранения
-- `Load model` — импортирует checkpoint `.pt` и tokenizer `.model` через UI
-- выбранная модель используется и на странице обучения, и на странице теста
-
-Роли компонентов распределены следующим образом:
-
-- `web_ui` — SPA на React/Vite
-- `web_backend` — BFF-слой, который работает с файлами и проксирует runtime- и training-запросы в `service`
-- `service` — основной сервис для routing, preview, сборки датасета и training runtime
-
-## Tools registry
-
-Tools хранятся в обычном JSON/YAML-файле.
-
-Путь к файлу задаётся через env:
-
-```bash
-export PROTONX_TOOLS_FILE=/absolute/path/to/tools.json
-```
-
-Если env не задан, по умолчанию используется:
+## Текущий контракт v1
 
 ```text
-data/tools/tools.json
+candidate_tools + user_text -> tool_calls JSON
 ```
 
-UI редактирует этот файл, но файл остаётся source of truth и может правиться вручную.
+Модель получает только список кандидатов и текст пользователя. Она не генерирует обычный текст, объяснения, fallback-сообщения или ответы “из головы”. Человекочитаемый результат приходит от executor/template слоя после вызова инструмента.
 
-Datasets для обучения не выбираются автоматически по карточкам. На экране Dataset + Training указывается конкретное имя dataset-файла, при этом UI может подсказывать уже обнаруженные файлы из `PROTONX_DATASET_DIR`.
+Пайплайн:
 
-## Быстрый старт
+```text
+user -> pre-router -> top-k tools -> tiny model -> validator -> executor -> response
+```
 
-### 1. Установка зависимостей
+Fallback — тоже структурированный выбор: синтетический инструмент `__fallback__`.
+
+## Структура
+
+```text
+service/      FastAPI сервис модели: routing, validation, training
+web_backend/  FastAPI backend для UI: workspace, tools, datasets, execution
+web_ui/       React + Vite интерфейс оператора
+web/          legacy Streamlit UI
+data/         локальные tools, datasets, weights, tokenizers, logs
+```
+
+Подробности по сервису модели: [service/README.md](service/README.md).
+
+## Как запустить
 
 ```bash
-# LLM-сервис
 cd service && pip install -r requirements.txt
-
-# UI backend / BFF
-cd web_backend && pip install -r requirements.txt
-
-# Frontend
-cd web_ui && npm install
+cd ../web_backend && pip install -r requirements.txt
+cd ../web_ui && npm install
 ```
 
-### 2. Настроить data paths
-
-```bash
-cd /path/to/proton-x
-export PROTONX_TOOLS_FILE=$(pwd)/data/tools/tools.json
-export PROTONX_DATASET_DIR=$(pwd)/data/train/routing
-export PROTONX_ROUTER_LOG_FILE=$(pwd)/data/logs/router.jsonl
-export PROTONX_WORKSPACE_FILE=$(pwd)/data/workspace/settings.json
-export PROTONX_SERVICE_URL=http://127.0.0.1:8000
-```
-
-### 3. Запуск
-
-Самый удобный вариант из корня репозитория:
+Из корня репозитория:
 
 ```bash
 make run-service
@@ -136,61 +48,36 @@ make run-ui-backend
 make run-web-ui
 ```
 
-Или одним процессом:
+Или все процессы сразу:
 
 ```bash
 make run-dev
 ```
 
-Если нужен ручной запуск без Makefile:
+Адреса:
 
-```bash
-# Терминал 1
-cd service && uvicorn main:app --reload --port 8000
+- `http://127.0.0.1:8000/health` — model service
+- `http://127.0.0.1:8100/health` — UI backend
+- `http://localhost:8501` — web UI
 
-# Терминал 2
-cd /path/to/proton-x && uvicorn web_backend.app:app --reload --port 8100
+## Основной workflow
 
-# Терминал 3
-cd web_ui && npm run dev
+```text
+create tools -> choose dataset -> train -> test -> inspect logs -> improve dataset
 ```
 
-### 4. Проверка
+В UI есть страницы:
 
-- LLM-сервис: http://localhost:8000/health
-- UI backend: http://127.0.0.1:8100/api/tools
-- Веб-интерфейс: http://localhost:8501
+- **Tools** — редактирование registry инструментов.
+- **Dataset + Training** — выбор dataset-файла и запуск обучения/дообучения.
+- **Test** — проверка маршрутизации и executor output.
+- **Logs** — fallback/error cases для улучшения dataset.
 
-Рабочий цикл в UI:
+Состояние UI хранится на backend в [data/workspace/settings.json](data/workspace/settings.json).
 
-1. В верхнем toolbar выбрать `Create model` или `Load model`
-2. На `Dataset + Training` указать dataset file, epochs и batch size, затем запустить train или fine-tune
-3. На `Test` прогонять запросы на активной модели
+## Проверка
 
-Если нужно изменить активную модель, dataset по умолчанию, training defaults или test-page state без открытия UI, достаточно поправить [data/workspace/settings.json](data/workspace/settings.json).
-
-### 5. Legacy Streamlit
-
-Папка `web/` больше не является основным UI. Она оставлена только как legacy-notice, чтобы явно показывать, что старый Streamlit workflow снят с эксплуатации.
-
-## Стек
-
-- Python 3.11+
-- FastAPI + Uvicorn
-- React 18 + TypeScript + Vite
-- PyTorch
-- SentencePiece
-- Transformers, Datasets, Accelerate, TRL
-- Safetensors, Einops
-
-## Текущая модель
-
-Текущая baseline-модель — маленький causal decoder для routing-SFT.
-
-Это не Gemma-compatible architecture и не production LLM. Это учебный/инженерный baseline для:
-
-- `top-k candidate tools`
-- structured output
-- validator-driven fallback
-
-UI и backend работают с моделью, указанной в workspace settings, а не с жёстко зашитым именем checkpoint-файла.
+```bash
+pytest --import-mode=importlib service/tests web_backend/tests -q
+cd web_ui && npm run build
+```

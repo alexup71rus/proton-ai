@@ -175,7 +175,6 @@ def test_runtime_prompt_uses_same_compact_tools_contract_as_training_examples():
     runtime_prompt = build_routing_prompt(
         user_text="turn on the lamp",
         tools=tools,
-        answer_allowed=False,
     )
     assert [tool["name"] for tool in runtime_prompt["tools"]] == [
         tool["name"] for tool in training_example["tools"]

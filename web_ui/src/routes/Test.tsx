@@ -50,7 +50,6 @@ export function TestRoute({ selectedModel, testSettings, onTestSettingsChange }:
     try {
       const payload = await runTest({
         user_text: userText,
-        answer_allowed: testSettings.answer_allowed,
         model_path: selectedModel.model_path,
         tokenizer_path: selectedModel.tokenizer_path,
       });

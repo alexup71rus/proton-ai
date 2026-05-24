@@ -28,7 +28,6 @@ class ToolRegistryResponse(BaseModel):
 class RoutePreviewRequest(BaseModel):
     user_text: str
     tools: list[ToolDefinition]
-    answer_allowed: bool = True
     max_candidates: int = 3
     strict_mode: bool = True
     model_path: str | None = None
@@ -45,6 +44,7 @@ class RoutePreviewResponse(BaseModel):
     validator_result: dict[str, Any]
     confidence: Literal["high", "low"]
     final_action: Literal["tool_call", "fallback"]
+    final_output: dict[str, Any]
 
 
 class ChatMessage(BaseModel):

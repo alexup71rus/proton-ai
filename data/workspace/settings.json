@@ -19,7 +19,6 @@
   },
   "test": {
     "user_text": "сделай свет потеплее",
-    "answer_allowed": false,
     "show_debug": false
   }
 }

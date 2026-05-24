@@ -42,7 +42,6 @@ def _schema_ok(arguments: dict[str, Any], tool: ToolDefinition, strict_mode: boo
 def validate_model_output(
     candidate_tools: list[ToolDefinition],
     raw_output: str,
-    answer_allowed: bool,
     strict_mode: bool = True,
 ) -> ValidationResult:
     try:

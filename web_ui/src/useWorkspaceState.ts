@@ -43,7 +43,6 @@ export function defaultTrainingSettings(): WorkspaceTrainingSettings {
 export function defaultTestSettings(): WorkspaceTestSettings {
   return {
     user_text: "сделай свет потеплее",
-    answer_allowed: false,
     show_debug: false,
   };
 }

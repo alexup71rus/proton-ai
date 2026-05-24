@@ -22,10 +22,6 @@ def test_post_test_returns_result_and_debug_sections(monkeypatch, client) -> Non
 
     def fake_post_json(path: str, payload: dict) -> dict:
         captured_payloads[path] = payload
-        if path == "/chat/completions":
-            return {
-                "tool_calls": [{"name": "light", "arguments": {"state": "on"}}],
-            }
         if path == "/route/preview":
             return {
                 "candidate_tools": ["light"],
@@ -34,6 +30,9 @@ def test_post_test_returns_result_and_debug_sections(monkeypatch, client) -> Non
                 "validator_result": {"valid": True},
                 "confidence": "high",
                 "final_action": "tool_call",
+                "final_output": {
+                    "tool_calls": [{"name": "light", "arguments": {"state": "on"}}],
+                },
             }
         raise AssertionError(f"Unexpected path: {path}")
 
@@ -44,7 +43,7 @@ def test_post_test_returns_result_and_debug_sections(monkeypatch, client) -> Non
         lambda tool, arguments: {
             "status": "executed",
             "tool_name": tool["name"],
-            "output": {"state": arguments["state"]},
+            "output": {"state": arguments["state"], "response": "Light is on."},
             "error": None,
         },
     )
@@ -65,11 +64,13 @@ def test_post_test_returns_result_and_debug_sections(monkeypatch, client) -> Non
     assert payload["result"]["execution"] == {
         "status": "executed",
         "tool_name": "light",
-        "output": {"state": "on"},
+        "output": {"state": "on", "response": "Light is on."},
         "error": None,
     }
+    assert payload["result"]["response"] == "Light is on."
     assert payload["debug"]["confidence"] == "high"
-    assert captured_payloads["/chat/completions"]["model_path"] == "/tmp/models/custom_router.pt"
+    assert "/chat/completions" not in captured_payloads
+    assert captured_payloads["/route/preview"]["model_path"] == "/tmp/models/custom_router.pt"
     assert captured_payloads["/route/preview"]["tokenizer_path"] == "/tmp/models/custom_router.model"
 
 
@@ -88,13 +89,7 @@ def test_post_test_skips_execution_for_fallback(monkeypatch, client) -> None:
         ],
     )
 
-    def fake_post_json(path: str, payload: dict) -> dict:
-        if path == "/chat/completions":
-            return {
-                "tool_calls": [],
-                "response": "fallback",
-                "fallback": True,
-            }
+    def fake_post_json(path: str, _payload: dict) -> dict:
         if path == "/route/preview":
             return {
                 "candidate_tools": ["light"],
@@ -103,12 +98,15 @@ def test_post_test_skips_execution_for_fallback(monkeypatch, client) -> None:
                 "validator_result": {"valid": True},
                 "confidence": "low",
                 "final_action": "fallback",
+                "final_output": {
+                    "tool_calls": [{"name": "__fallback__", "arguments": {}}],
+                },
             }
         raise AssertionError(f"Unexpected path: {path}")
 
     called: dict[str, bool] = {"value": False}
 
-    def fake_execute_tool(tool, arguments):
+    def fake_execute_tool(_tool, _arguments):
         called["value"] = True
         return None
 
@@ -149,7 +147,6 @@ def test_post_test_uses_workspace_model_paths(tmp_path, monkeypatch, client) -> 
     },
     "test": {
         "user_text": "turn on the lamp",
-        "answer_allowed": true,
         "show_debug": false
   }
 }
@@ -175,10 +172,12 @@ def test_post_test_uses_workspace_model_paths(tmp_path, monkeypatch, client) -> 
 
     def fake_post_json(path: str, payload: dict) -> dict:
         captured_payloads[path] = payload
-        if path == "/chat/completions":
-            return {"tool_calls": []}
         if path == "/route/preview":
-            return {"candidate_tools": [], "validator_result": {}}
+            return {
+                "candidate_tools": [],
+                "validator_result": {},
+                "final_output": {"tool_calls": []},
+            }
         raise AssertionError(f"Unexpected path: {path}")
 
     monkeypatch.setattr(app_module.service_client, "post_json", fake_post_json)
@@ -187,6 +186,6 @@ def test_post_test_uses_workspace_model_paths(tmp_path, monkeypatch, client) -> 
     response = client.post("/api/test", json={"user_text": "turn on the lamp"})
 
     assert response.status_code == 200
-    assert captured_payloads["/chat/completions"]["answer_allowed"] is True
-    assert captured_payloads["/chat/completions"]["model_path"] == "/tmp/saved_router.pt"
+    assert "/chat/completions" not in captured_payloads
+    assert captured_payloads["/route/preview"]["model_path"] == "/tmp/saved_router.pt"
     assert captured_payloads["/route/preview"]["tokenizer_path"] == "/tmp/saved_router.model"

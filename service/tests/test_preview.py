@@ -18,7 +18,6 @@ def test_model_runtime_falls_back_when_weights_are_missing(tmp_path: Path):
     )
     result = runtime.generate(
         prompt={
-            "system": {"answer_allowed": False},
             "tools": [{"name": "light", "arguments_schema": {"required": ["state"]}}],
             "user": "turn on the lamp",
         }
@@ -36,7 +35,6 @@ def test_route_preview_returns_full_pipeline_fields(monkeypatch):
         "/route/preview",
         json={
             "user_text": "turn on the lamp",
-            "answer_allowed": False,
             "tools": [
                 {
                     "name": "light",
@@ -57,6 +55,7 @@ def test_route_preview_returns_full_pipeline_fields(monkeypatch):
     assert payload["confidence"] == "high"
     assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "tool_call"
+    assert payload["final_output"] == {"tool_calls": [{"name": "light", "arguments": {"state": "on"}}]}
     assert payload["validation_error"] is None
     assert payload["serialized_prompt"].startswith("TOOLS:\n")
     assert "USER:\nturn on the lamp\nOUTPUT:\n" in payload["serialized_prompt"]
@@ -75,7 +74,6 @@ def test_route_preview_uses_request_scoped_model_paths(monkeypatch, tmp_path):
         "/route/preview",
         json={
             "user_text": "turn on the lamp",
-            "answer_allowed": False,
             "model_path": str(tmp_path / "weights" / "custom_router.pt"),
             "tokenizer_path": str(tmp_path / "tokenizers" / "custom_router.model"),
             "tools": [
@@ -108,7 +106,6 @@ def test_route_preview_routes_single_zero_argument_tool_via_model(monkeypatch):
         "/route/preview",
         json={
             "user_text": "show me downloads",
-            "answer_allowed": False,
             "tools": [
                 {
                     "name": "list_downloads",
@@ -129,6 +126,7 @@ def test_route_preview_routes_single_zero_argument_tool_via_model(monkeypatch):
     assert payload["confidence"] == "high"
     assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "tool_call"
+    assert payload["final_output"] == {"tool_calls": [{"name": "list_downloads", "arguments": {}}]}
     assert payload["validation_error"] is None
     assert payload["serialized_prompt"].startswith("TOOLS:\n")
     assert payload["model_output"] == '{"tool_calls":[{"name":"list_downloads","arguments":{}}]}'
@@ -144,7 +142,6 @@ def test_route_preview_routes_best_zero_argument_tool_via_model(monkeypatch):
         "/route/preview",
         json={
             "user_text": "show me node version",
-            "answer_allowed": False,
             "tools": [
                 {
                     "name": "get_node_version",
@@ -190,7 +187,6 @@ def test_route_preview_falls_back_on_ambiguous_candidates_without_calling_model(
         "/route/preview",
         json={
             "user_text": "lamp",
-            "answer_allowed": False,
             "tools": [
                 {
                     "name": "light",
@@ -220,4 +216,5 @@ def test_route_preview_falls_back_on_ambiguous_candidates_without_calling_model(
     assert payload["confidence"] == "low"
     assert payload["validator_result"]["valid"] is False
     assert payload["final_action"] == "fallback"
+    assert payload["final_output"] == {"tool_calls": [{"name": FALLBACK_TOOL_NAME, "arguments": {}}]}
     assert payload["candidate_tools"] == ["light", "night_light"]

@@ -268,7 +268,6 @@ def _evaluate_model(
         validation = validate_model_output(
             candidate_tools,
             raw_output,
-            answer_allowed=False,
             strict_mode=True,
         )
         expected_name = normalized["assistant"]["tool_calls"][0]["name"]

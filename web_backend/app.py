@@ -13,6 +13,7 @@ from service.protonx.training.common import normalize_artifact_name as normalize
 from web_backend.config import get_tools_file
 from web_backend import service_client
 from web_backend.datasets import append_dataset_content, create_manual_dataset, delete_dataset, duplicate_dataset, get_dataset_preview, get_dataset_validation_report, import_dataset_file, list_dataset_files, resolve_dataset_path, save_bootstrap_dataset, summarize_dataset
+from web_backend.dataset_validation import FALLBACK_TOOL_NAME
 from web_backend.logs import export_failed_cases_as_dataset, load_human_logs
 from web_backend.schemas import DatasetAppendPayload, DatasetBootstrapPayload, DatasetBootstrapResponse, DatasetCreatePayload, DatasetDeleteResponse, DatasetDetailResponse, DatasetDuplicateResponse, DatasetMutationResponse, DatasetValidationReport, DatasetsResponse, ImportDatasetResponse, LogsExportResponse, LogsResponse, ModelImportResponse, SaveToolsResponse, TestPayload, TestResponse, ToolsPayload, ToolsResponse, TrainingStartPayload, TrainingStatusResponse, WorkspaceModelSettings, WorkspaceSettingsPayload, WorkspaceSettingsResponse, WorkspaceTestSettings, WorkspaceTrainingSettings
 from web_backend.tools_store import load_tools, save_tools
@@ -122,6 +123,19 @@ def _coalesce_str(value: str | None, fallback: str) -> str:
 
 def _coalesce_int(value: int | None, fallback: int) -> int:
     return fallback if value is None else value
+
+
+def _extract_tool_response(execution: dict | None) -> str | None:
+    if not execution or execution.get("error"):
+        return None
+    output = execution.get("output")
+    if not isinstance(output, dict):
+        return None
+    response = output.get("response")
+    if not isinstance(response, str):
+        return None
+    response = response.strip()
+    return response or None
 
 
 @app.get("/health")
@@ -463,47 +477,42 @@ def run_test(payload: TestPayload) -> TestResponse:
 
     service_tools = _to_service_tools(tools)
     workspace = _load_workspace_settings()
-    selected_model, _training_settings, test_settings = _workspace_sections(workspace)
+    selected_model, _training_settings, _test_settings = _workspace_sections(workspace)
     model_path = payload.model_path or selected_model.model_path
     tokenizer_path = payload.tokenizer_path or selected_model.tokenizer_path
-    answer_allowed = test_settings.answer_allowed if payload.answer_allowed is None else payload.answer_allowed
-
-    result_payload = service_client.post_json(
-        "/chat/completions",
-        {
-            "messages": [{"role": "user", "content": payload.user_text}],
-            "tools": service_tools,
-            "tool_choice": "auto",
-            "answer_allowed": answer_allowed,
-            "model_path": model_path,
-            "tokenizer_path": tokenizer_path,
-        },
-    )
     debug_payload = service_client.post_json(
         "/route/preview",
         {
             "user_text": payload.user_text,
             "tools": service_tools,
-            "answer_allowed": answer_allowed,
             "model_path": model_path,
             "tokenizer_path": tokenizer_path,
         },
     )
 
-    tool_calls = result_payload.get("tool_calls", [])
-    first_call = tool_calls[0] if tool_calls else None
+    final_output = debug_payload.get("final_output", {})
+    tool_calls = final_output.get("tool_calls", []) if isinstance(final_output, dict) else []
+    first_call = next(
+        (
+            call
+            for call in tool_calls
+            if isinstance(call, dict) and call.get("name") != FALLBACK_TOOL_NAME
+        ),
+        None,
+    )
     tool_name = first_call.get("name") if isinstance(first_call, dict) else None
     arguments = first_call.get("arguments") if isinstance(first_call, dict) else None
     selected_tool = next((tool for tool in tools if tool.get("name") == tool_name), None)
     execution = execute_tool(selected_tool, arguments) if selected_tool else None
     status = "tool_call" if tool_name else "fallback"
+    response_text = _extract_tool_response(execution)
 
     return TestResponse(
         result={
             "status": status,
             "tool_name": tool_name,
             "arguments": arguments,
-            "response": result_payload.get("response"),
+            "response": response_text,
             "execution": execution,
         },
         debug={

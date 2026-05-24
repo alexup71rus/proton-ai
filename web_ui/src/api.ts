@@ -125,7 +125,6 @@ export interface WorkspaceTrainingSettings {
 
 export interface WorkspaceTestSettings {
   user_text: string;
-  answer_allowed: boolean;
   show_debug: boolean;
 }
 
@@ -191,7 +190,6 @@ export interface TrainingStartPayload {
 
 export interface TestRunPayload {
   user_text: string;
-  answer_allowed?: boolean;
   model_path?: string | null;
   tokenizer_path?: string | null;
 }

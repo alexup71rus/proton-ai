@@ -157,7 +157,6 @@ class WorkspaceTrainingSettings(BaseModel):
 
 class WorkspaceTestSettings(BaseModel):
     user_text: str = "сделай свет потеплее"
-    answer_allowed: bool = False
     show_debug: bool = False
 
 
@@ -228,7 +227,6 @@ class TrainingStatusResponse(BaseModel):
 
 class TestPayload(BaseModel):
     user_text: str
-    answer_allowed: bool | None = None
     model_path: str | None = None
     tokenizer_path: str | None = None
 
