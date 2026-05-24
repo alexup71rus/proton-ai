@@ -513,6 +513,7 @@ def run_test(payload: TestPayload) -> TestResponse:
     execution = execute_tool(selected_tool, arguments) if selected_tool else None
     status = "tool_call" if tool_name else "fallback"
     response_text = _extract_tool_response(execution)
+    validation_error = debug_payload.get("validation_error")
 
     return TestResponse(
         result={
@@ -520,11 +521,13 @@ def run_test(payload: TestPayload) -> TestResponse:
             "tool_name": tool_name,
             "arguments": arguments,
             "response": response_text,
+            "validation_error": validation_error,
             "execution": execution,
         },
         debug={
             "serialized_prompt": debug_payload.get("serialized_prompt", ""),
             "raw_model_output": debug_payload.get("model_output", ""),
+            "validation_error": validation_error,
             "repaired_output": debug_payload.get("repaired_output"),
             "validator_result": debug_payload.get("validator_result", {}),
             "final_action": debug_payload.get("final_action", "fallback"),

@@ -25,8 +25,13 @@ def test_post_test_returns_result_and_debug_sections(monkeypatch, client) -> Non
         if path == "/route/preview":
             return {
                 "model_output": "{}",
-                "repaired_output": "{}",
-                "validator_result": {"valid": True},
+                "repaired_output": None,
+                "validation_error": None,
+                "validator_result": {
+                    "valid": False,
+                    "error": "invalid json",
+                    "final_action": "fallback",
+                },
                 "final_action": "tool_call",
                 "final_output": {
                     "tool_calls": [{"name": "light", "arguments": {"state": "on"}}],
@@ -66,6 +71,10 @@ def test_post_test_returns_result_and_debug_sections(monkeypatch, client) -> Non
         "error": None,
     }
     assert payload["result"]["response"] == "Light is on."
+    assert payload["result"]["validation_error"] is None
+    assert payload["debug"]["raw_model_output"] == "{}"
+    assert payload["debug"]["validation_error"] is None
+    assert payload["debug"]["repaired_output"] is None
     assert "/chat/completions" not in captured_payloads
     assert captured_payloads["/route/preview"]["model_path"] == "/tmp/models/custom_router.pt"
     assert captured_payloads["/route/preview"]["tokenizer_path"] == "/tmp/models/custom_router.model"
@@ -90,7 +99,8 @@ def test_post_test_skips_execution_for_fallback(monkeypatch, client) -> None:
         if path == "/route/preview":
             return {
                 "model_output": "{}",
-                "repaired_output": "{}",
+                "repaired_output": None,
+                "validation_error": "invalid json",
                 "validator_result": {"valid": True},
                 "final_action": "fallback",
                 "final_output": {
@@ -113,6 +123,8 @@ def test_post_test_skips_execution_for_fallback(monkeypatch, client) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["result"]["status"] == "fallback"
+    assert payload["result"]["validation_error"] == "invalid json"
+    assert payload["debug"]["validation_error"] == "invalid json"
     assert payload["result"]["execution"] is None
     assert called["value"] is False
 

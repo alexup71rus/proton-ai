@@ -7,7 +7,6 @@ from protonx.contracts import with_fallback_tool
 from protonx.logging import append_router_log
 from protonx.routing.model_runtime import ModelRuntime
 from protonx.routing.prompt import build_routing_prompt
-from protonx.routing.repair import repair_json_syntax
 from protonx.routing.validate import validate_model_output
 from protonx.schemas import RoutePreviewRequest, RoutePreviewResponse
 from protonx.training.format import serialize_inference_prompt
@@ -86,15 +85,12 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
     serialized_prompt = serialize_inference_prompt(prompt)
     _sync_model_runtime_paths(payload.model_path, payload.tokenizer_path)
     model_output = MODEL_RUNTIME.generate(prompt)
-    repaired_output = repair_json_syntax(model_output)
+    repaired_output = None
     validation = validate_model_output(
         available_tools,
-        repaired_output or "",
+        model_output,
         strict_mode=payload.strict_mode,
     )
-
-    if validation.final_action == "fallback" and repaired_output is None:
-        repaired_output = model_output
 
     if validation.final_action == "fallback":
         final_output = build_fallback_payload()

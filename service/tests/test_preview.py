@@ -161,6 +161,44 @@ def test_route_preview_routes_single_zero_argument_tool_via_model(monkeypatch):
     assert payload["model_output"] == '{"tool_calls":[{"name":"list_downloads","arguments":{}}]}'
 
 
+def test_route_preview_does_not_repair_invalid_model_json(monkeypatch):
+    monkeypatch.setattr(
+        inference.MODEL_RUNTIME,
+        "generate",
+        lambda prompt: '{"tool_calls":[{"name":"list_downloads","arguments":{}}]',
+    )
+    response = client.post(
+        "/route/preview",
+        json={
+            "user_text": "show me downloads",
+            "tools": [
+                {
+                    "name": "list_downloads",
+                    "description": "Downloads folder contents",
+                    "tags": ["downloads", "download folder"],
+                    "arguments_schema": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["model_output"] == '{"tool_calls":[{"name":"list_downloads","arguments":{}}]'
+    assert payload["repaired_output"] is None
+    assert payload["validator_result"] == {
+        "valid": False,
+        "error": "invalid json",
+        "final_action": "fallback",
+    }
+    assert payload["final_output"] == {"tool_calls": [{"name": FALLBACK_TOOL_NAME, "arguments": {}}]}
+
+
 def test_route_preview_routes_best_zero_argument_tool_via_model(monkeypatch):
     monkeypatch.setattr(
         inference.MODEL_RUNTIME,

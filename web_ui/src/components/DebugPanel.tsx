@@ -36,8 +36,8 @@ export function DebugPanel({ debug }: DebugPanelProps) {
         </div>
 
         <div className="panel panel--soft debug-card debug-card--wide">
-          <strong>Repaired output</strong>
-          <pre>{debug.repaired_output || "-"}</pre>
+          <strong>Validation error</strong>
+          <pre>{debug.validation_error || "-"}</pre>
         </div>
       </div>
     </section>

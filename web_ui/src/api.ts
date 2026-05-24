@@ -226,6 +226,7 @@ export interface TestResultPayload {
   tool_name: string | null;
   arguments: TestArguments | null;
   response: string | null;
+  validation_error: string | null;
   execution: TestExecution | null;
 }
 
@@ -233,6 +234,7 @@ export interface TestResultPayload {
 export interface TestDebugPayload {
   serialized_prompt: string;
   raw_model_output: string;
+  validation_error: string | null;
   repaired_output: string | null;
   validator_result: TestValidatorResult;
   final_action: TestFinalAction;

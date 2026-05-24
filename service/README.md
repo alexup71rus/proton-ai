@@ -2,7 +2,7 @@
 
 `service/` — FastAPI сервис для обучения и запуска текущей tiny router модели.
 
-В v1 модель делает одну узкую вещь: выбирает инструмент из кандидатов и возвращает OpenAI-style `tool_calls` JSON. Это не chat LLM; ответы пользователю и будущие цепочки действий должны строиться поверх validated tool execution.
+В v1 модель делает одну узкую вещь: получает полный registry инструментов и генерирует OpenAI-style `tool_calls` JSON. Это не chat LLM; ответы пользователю и будущие цепочки действий должны строиться поверх validated tool execution.
 
 ## Контракт модели
 
@@ -31,12 +31,13 @@ user_text
   -> tools registry
   -> compact prompt
   -> ModelRuntime.generate()
-  -> JSON repair
   -> validator
   -> final_output
 ```
 
-`/route/preview` возвращает debug этого же прохода: prompt, raw/repaired output, validation result, final action и `final_output`.
+Runtime не чинит JSON и не делает constrained scoring по registry. Если модель вернула invalid JSON, validator возвращает ошибку, `final_output` становится canonical fallback для безопасного executor/frontend path, а debug сохраняет сырой `model_output`.
+
+`/route/preview` возвращает debug этого же прохода: prompt, raw model output, validation result, final action и `final_output`. Поле `repaired_output` оставлено только для API compatibility и в текущем режиме должно быть `null`.
 
 `/chat/completions` — совместимый adapter поверх того же router path. Политика вроде `answer_allowed` относится к adapter/template слою и не попадает в prompt или validator.
 

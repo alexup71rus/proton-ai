@@ -89,7 +89,7 @@ def test_train_start_accepts_config_and_eventually_completes(tmp_path):
     checkpoint = torch.load(Path(final_payload["model_path"]), map_location="cpu")
     assert checkpoint["config"]["hidden_dim"] == 32
     assert checkpoint["config"]["num_layers"] == 1
-    assert checkpoint["output_format"] == "call-v1"
+    assert checkpoint["output_format"] == "json-v1"
     assert checkpoint["evaluation"]["mode"] == "unique_holdout"
     assert checkpoint["evaluation"]["eval_total"] == final_payload["eval_total"]
 

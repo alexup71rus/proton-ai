@@ -136,6 +136,13 @@ export function TestRoute({ selectedModel, testSettings, onTestSettingsChange }:
                 <span className={`status-chip status-chip--${result.result.status}`}>{formatResultStatus(result.result.status)}</span>
               </div>
 
+              {result.result.validation_error ? (
+                <div className="feedback feedback--error">
+                  <strong>Model output rejected</strong>
+                  <p>{result.result.validation_error}</p>
+                </div>
+              ) : null}
+
               {result.result.tool_name ? (
                 <>
                   <div className="result-card__grid">

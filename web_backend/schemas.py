@@ -253,12 +253,14 @@ class TestResultPayload(BaseModel):
     tool_name: str | None = None
     arguments: dict[str, Any] | None = None
     response: str | None = None
+    validation_error: str | None = None
     execution: ToolExecutionPayload | None = None
 
 
 class TestDebugPayload(BaseModel):
     serialized_prompt: str = ""
     raw_model_output: str = ""
+    validation_error: str | None = None
     repaired_output: str | None = None
     validator_result: dict[str, Any] = Field(default_factory=dict)
     final_action: str = "fallback"
@@ -280,4 +282,3 @@ class LogRow(BaseModel):
 
 class LogsResponse(BaseModel):
     rows: list[LogRow] = Field(default_factory=list)
-
