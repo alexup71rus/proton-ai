@@ -4,10 +4,10 @@
     "label": "proton_router_v1",
     "model_name": "tiny-router",
     "tokenizer_name": "sentencepiece-bpe",
-    "output_root_dir": "/Users/aleksandr/Documents/Projects/proton-x/data",
+    "output_root_dir": "data",
     "artifact_name": "proton_router_v1",
-    "model_path": "/Users/aleksandr/Documents/Projects/proton-x/data/weights/proton_router_v1.pt",
-    "tokenizer_path": "/Users/aleksandr/Documents/Projects/proton-x/data/tokenizers/proton_router_v1.model",
+    "model_path": "data/weights/proton_router_v1.pt",
+    "tokenizer_path": "data/tokenizers/proton_router_v1.model",
     "hidden_dim": 256,
     "num_layers": 4,
     "num_heads": 8
