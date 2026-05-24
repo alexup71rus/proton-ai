@@ -1,19 +1,20 @@
-import type { PropsWithChildren, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 
-type NavItem = {
+export interface AppShellNavItem {
   to: string;
   label: string;
   step: string;
   description: string;
-};
+}
 
 
-type AppShellProps = PropsWithChildren<{
-  navItems: NavItem[];
+export interface AppShellProps {
+  navItems: AppShellNavItem[];
   workspaceToolbar?: ReactNode;
-}>;
+  children?: ReactNode;
+}
 
 
 export function AppShell({ navItems, workspaceToolbar, children }: AppShellProps) {

@@ -18,6 +18,7 @@ from protonx.schemas import JsonSchema, ToolDefinition
 from protonx.training.dataset_validation import validate_training_dataset_file
 from protonx.training.format import serialize_training_parts
 from protonx.training.format import serialize_training_record
+from protonx.training.common import normalize_artifact_name
 from protonx.training.model import TinyRouterConfig, TinyRouterModel
 from protonx.training.state import TRAINING_STATE
 from protonx.training.tokenizer import train_sentencepiece
@@ -61,25 +62,11 @@ def _resolve_repo_path(raw_path: str | None) -> Path | None:
     return path
 
 
-def _normalize_artifact_name(artifact_name: str) -> str:
-    normalized = artifact_name.strip()
-    for suffix in (".pt", ".model", ".vocab"):
-        if normalized.endswith(suffix):
-            normalized = normalized[: -len(suffix)]
-            break
-    normalized = normalized.strip().strip("./")
-    if not normalized:
-        raise ValueError("artifact_name must be a non-empty file stem")
-    if Path(normalized).name != normalized:
-        raise ValueError("artifact_name must not contain path separators")
-    return normalized
-
-
 def _build_output_paths(
     output_root_dir: str | None,
     artifact_name: str,
 ) -> tuple[Path, str, Path, Path, Path]:
-    normalized_artifact_name = _normalize_artifact_name(artifact_name)
+    normalized_artifact_name = normalize_artifact_name(artifact_name)
     resolved_output_root = _resolve_repo_path(output_root_dir) or DATA_DIR
     tokenizers_dir = resolved_output_root / "tokenizers"
     weights_dir = resolved_output_root / "weights"
@@ -307,14 +294,59 @@ def _evaluate_model(
     return summary
 
 
-def _apply_evaluation_summary(summary: dict[str, int]) -> None:
-    TRAINING_STATE.eval_total = summary.get("eval_total", 0)
-    TRAINING_STATE.eval_valid = summary.get("eval_valid", 0)
-    TRAINING_STATE.eval_exact = summary.get("eval_exact", 0)
-    TRAINING_STATE.eval_positive_total = summary.get("eval_positive_total", 0)
-    TRAINING_STATE.eval_positive_exact = summary.get("eval_positive_exact", 0)
-    TRAINING_STATE.eval_fallback_total = summary.get("eval_fallback_total", 0)
-    TRAINING_STATE.eval_fallback_exact = summary.get("eval_fallback_exact", 0)
+def _prepare_training_runtime(
+    records: list[dict],
+    corpus_path: Path,
+    tokenizer_prefix: Path,
+    resolved_resume_model_path: Path | None,
+    resolved_resume_tokenizer_path: Path | None,
+    hidden_dim: int,
+    num_layers: int,
+    num_heads: int,
+) -> tuple[
+    TinyRouterConfig,
+    TinyRouterModel,
+    spm.SentencePieceProcessor,
+    Path,
+    list[tuple[list[int], list[int]]],
+]:
+    if resolved_resume_model_path and resolved_resume_tokenizer_path:
+        config, model, tokenizer = _load_checkpoint(
+            resolved_resume_model_path,
+            resolved_resume_tokenizer_path,
+        )
+        tokenizer_path = resolved_resume_tokenizer_path
+    else:
+        _write_tokenizer_corpus(records, corpus_path)
+        tokenizer_path = train_sentencepiece(corpus_path, tokenizer_prefix, vocab_size=512)
+        tokenizer = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
+        config = None
+        model = None
+
+    tokenized_records = [
+        _tokenize_training_record(tokenizer, record) for record in records
+    ]
+    max_record_len = max(
+        (_record_sequence_length(record, tokenizer.eos_id()) for record in tokenized_records),
+        default=2,
+    )
+
+    if resolved_resume_model_path and resolved_resume_tokenizer_path:
+        if max_record_len > config.max_seq_len:
+            raise ValueError(
+                f"Serialized training record exceeds loaded checkpoint max_seq_len={config.max_seq_len}."
+            )
+        return config, model, tokenizer, tokenizer_path, tokenized_records
+
+    config = TinyRouterConfig(
+        vocab_size=tokenizer.get_piece_size(),
+        hidden_dim=hidden_dim,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        max_seq_len=max(256, max_record_len),
+    )
+    model = TinyRouterModel(config)
+    return config, model, tokenizer, tokenizer_path, tokenized_records
 
 
 def run_training(
@@ -331,8 +363,7 @@ def run_training(
     num_layers: int = 2,
     num_heads: int = 4,
 ) -> dict:
-    TRAINING_STATE.status = "running"
-    TRAINING_STATE.error = None
+    TRAINING_STATE.update(status="running", error=None)
     try:
         records = _load_records(dataset_path)
         dataset_sha1 = _file_sha1(dataset_path)
@@ -346,58 +377,31 @@ def run_training(
             raise ValueError("resume_model_path and resume_tokenizer_path must be provided together")
         if not resolved_resume_model_path:
             _validate_new_model_config(hidden_dim, num_layers, num_heads)
-        TRAINING_STATE.current_epoch = 0
-        TRAINING_STATE.total_epochs = epochs
-        TRAINING_STATE.current_step = 0
-        TRAINING_STATE.total_steps = max(1, ((len(records) + batch_size - 1) // batch_size) * epochs)
-        TRAINING_STATE.loss = None
-        TRAINING_STATE.loss_history = []
-        TRAINING_STATE.metrics = {}
-        TRAINING_STATE.batch_size = batch_size
-        TRAINING_STATE.model_name = model_name
-        TRAINING_STATE.tokenizer_name = tokenizer_name
-        TRAINING_STATE.output_root_dir = str(resolved_output_root)
-        TRAINING_STATE.artifact_name = normalized_artifact_name
-        TRAINING_STATE.dataset_path = str(dataset_path)
-        TRAINING_STATE.dataset_sha1 = dataset_sha1
-        TRAINING_STATE.dataset_row_count = len(records)
-        _apply_evaluation_summary({})
-
-        if resolved_resume_model_path and resolved_resume_tokenizer_path:
-            config, model, tokenizer = _load_checkpoint(
-                resolved_resume_model_path,
-                resolved_resume_tokenizer_path,
-            )
-            tokenizer_path = resolved_resume_tokenizer_path
-        else:
-            _write_tokenizer_corpus(records, corpus_path)
-            tokenizer_path = train_sentencepiece(corpus_path, tokenizer_prefix, vocab_size=512)
-            tokenizer = spm.SentencePieceProcessor(model_file=str(tokenizer_path))
-
-        pad_id = tokenizer.pad_id()
-        eos_id = tokenizer.eos_id()
-        tokenized_records = [
-            _tokenize_training_record(tokenizer, record) for record in records
-        ]
-        max_record_len = max(
-            (_record_sequence_length(record, eos_id) for record in tokenized_records),
-            default=2,
+        TRAINING_STATE.begin_run(
+            total_epochs=epochs,
+            total_steps=max(1, ((len(records) + batch_size - 1) // batch_size) * epochs),
+            batch_size=batch_size,
+            model_name=model_name,
+            tokenizer_name=tokenizer_name,
+            output_root_dir=str(resolved_output_root),
+            artifact_name=normalized_artifact_name,
+            dataset_path=str(dataset_path),
+            dataset_sha1=dataset_sha1,
+            dataset_row_count=len(records),
         )
 
-        if resolved_resume_model_path and resolved_resume_tokenizer_path:
-            if max_record_len > config.max_seq_len:
-                raise ValueError(
-                    f"Serialized training record exceeds loaded checkpoint max_seq_len={config.max_seq_len}."
-                )
-        else:
-            config = TinyRouterConfig(
-                vocab_size=tokenizer.get_piece_size(),
-                hidden_dim=hidden_dim,
-                num_layers=num_layers,
-                num_heads=num_heads,
-                max_seq_len=max(256, max_record_len),
-            )
-            model = TinyRouterModel(config)
+        config, model, tokenizer, tokenizer_path, tokenized_records = _prepare_training_runtime(
+            records,
+            corpus_path,
+            tokenizer_prefix,
+            resolved_resume_model_path,
+            resolved_resume_tokenizer_path,
+            hidden_dim,
+            num_layers,
+            num_heads,
+        )
+        pad_id = tokenizer.pad_id()
+        eos_id = tokenizer.eos_id()
 
         model.train()
         optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
@@ -434,7 +438,7 @@ def run_training(
                 _update_metrics()
 
         evaluation = _evaluate_model(records, config, model, tokenizer)
-        _apply_evaluation_summary(evaluation)
+        TRAINING_STATE.apply_evaluation_summary(evaluation)
 
         model_path.parent.mkdir(parents=True, exist_ok=True)
         if tokenizer_path != tokenizer_prefix.with_suffix(".model"):
@@ -457,14 +461,15 @@ def run_training(
             },
             model_path,
         )
-        TRAINING_STATE.checkpoint_path = str(model_path)
-        TRAINING_STATE.status = "completed"
-        TRAINING_STATE.model_path = str(model_path)
-        TRAINING_STATE.tokenizer_path = str(tokenizer_path)
+        TRAINING_STATE.update(
+            checkpoint_path=str(model_path),
+            status="completed",
+            model_path=str(model_path),
+            tokenizer_path=str(tokenizer_path),
+        )
         return TRAINING_STATE.to_dict()
     except Exception as exc:
-        TRAINING_STATE.status = "failed"
-        TRAINING_STATE.error = str(exc)
+        TRAINING_STATE.update(status="failed", error=str(exc))
         return TRAINING_STATE.to_dict()
 
 
@@ -496,18 +501,18 @@ def start_training_job(
         first_issue = validation["issues"][0]["message"] if validation["issues"] else "Dataset is invalid"
         raise ValueError(f"Dataset validation failed: {first_issue}")
 
-    TRAINING_STATE.reset()
-    TRAINING_STATE.status = "running"
-    TRAINING_STATE.error = None
-    TRAINING_STATE.total_epochs = epochs
-    TRAINING_STATE.batch_size = batch_size
-    TRAINING_STATE.model_name = model_name
-    TRAINING_STATE.tokenizer_name = tokenizer_name
-    TRAINING_STATE.output_root_dir = str(resolved_output_root)
-    TRAINING_STATE.artifact_name = normalized_artifact_name
-    TRAINING_STATE.dataset_path = str(dataset_path)
-    TRAINING_STATE.dataset_sha1 = _file_sha1(dataset_path)
-    TRAINING_STATE.dataset_row_count = validation["row_count"]
+    TRAINING_STATE.begin_run(
+        total_epochs=epochs,
+        total_steps=0,
+        batch_size=batch_size,
+        model_name=model_name,
+        tokenizer_name=tokenizer_name,
+        output_root_dir=str(resolved_output_root),
+        artifact_name=normalized_artifact_name,
+        dataset_path=str(dataset_path),
+        dataset_sha1=_file_sha1(dataset_path),
+        dataset_row_count=validation["row_count"],
+    )
 
     thread = threading.Thread(
         target=run_training,

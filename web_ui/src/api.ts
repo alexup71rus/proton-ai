@@ -206,28 +206,49 @@ export interface ModelImportResponse {
 }
 
 
+export type TestArguments = Record<string, unknown>;
+
+
+export type TestValidatorResult = Record<string, unknown>;
+
+
+export type TestDebugConfidence = "high" | "low";
+
+
+export type TestFinalAction = "tool_call" | "fallback";
+
+
+export interface TestExecution {
+  status: string;
+  tool_name: string | null;
+  output: unknown | null;
+  error: string | null;
+}
+
+
+export interface TestResultPayload {
+  status: string;
+  tool_name: string | null;
+  arguments: TestArguments | null;
+  response: string | null;
+  execution: TestExecution | null;
+}
+
+
+export interface TestDebugPayload {
+  candidate_tools: string[];
+  serialized_prompt: string;
+  raw_model_output: string;
+  repaired_output: string | null;
+  validator_result: TestValidatorResult;
+  confidence: TestDebugConfidence;
+  final_action: TestFinalAction;
+}
+
+
 export interface TestResponse {
-  result: {
-    status: string;
-    tool_name: string | null;
-    arguments: Record<string, unknown> | null;
-    response: string | null;
-    execution: {
-      status: string;
-      tool_name: string | null;
-      output: unknown | null;
-      error: string | null;
-    } | null;
-  };
-  debug: {
-    candidate_tools: string[];
-    serialized_prompt: string;
-    raw_model_output: string;
-    repaired_output: string | null;
-    validator_result: Record<string, unknown>;
-    confidence: string;
-    final_action: string;
-  };
+  result: TestResultPayload;
+  debug: TestDebugPayload;
 }
 
 

@@ -3,16 +3,18 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from service.protonx.training.common import normalize_artifact_name as normalize_training_artifact_name
 
 from web_backend.config import get_tools_file
 from web_backend import service_client
 from web_backend.datasets import append_dataset_content, create_manual_dataset, delete_dataset, duplicate_dataset, get_dataset_preview, get_dataset_validation_report, import_dataset_file, list_dataset_files, resolve_dataset_path, save_bootstrap_dataset, summarize_dataset
 from web_backend.logs import export_failed_cases_as_dataset, load_human_logs
-from web_backend.schemas import DatasetAppendPayload, DatasetBootstrapPayload, DatasetBootstrapResponse, DatasetCreatePayload, DatasetDeleteResponse, DatasetDetailResponse, DatasetDuplicateResponse, DatasetMutationResponse, DatasetValidationReport, DatasetsResponse, ImportDatasetResponse, LogsExportResponse, LogsResponse, ModelImportResponse, SaveToolsResponse, TestPayload, TestResponse, ToolsPayload, ToolsResponse, TrainingStartPayload, TrainingStatusResponse, WorkspaceSettingsPayload, WorkspaceSettingsResponse
+from web_backend.schemas import DatasetAppendPayload, DatasetBootstrapPayload, DatasetBootstrapResponse, DatasetCreatePayload, DatasetDeleteResponse, DatasetDetailResponse, DatasetDuplicateResponse, DatasetMutationResponse, DatasetValidationReport, DatasetsResponse, ImportDatasetResponse, LogsExportResponse, LogsResponse, ModelImportResponse, SaveToolsResponse, TestPayload, TestResponse, ToolsPayload, ToolsResponse, TrainingStartPayload, TrainingStatusResponse, WorkspaceModelSettings, WorkspaceSettingsPayload, WorkspaceSettingsResponse, WorkspaceTestSettings, WorkspaceTrainingSettings
 from web_backend.tools_store import load_tools, save_tools
 from web_backend.tool_executor import execute_tool, validate_tool_executor_paths
 from web_backend.workspace_store import load_workspace_settings, save_workspace_settings, update_workspace_settings
@@ -46,38 +48,7 @@ def _build_tools_response(tools: list[dict]) -> ToolsResponse:
 
 
 def _normalize_training_status(payload: dict | None) -> TrainingStatusResponse:
-    raw = payload or {}
-    return TrainingStatusResponse.model_validate(
-        {
-            "status": raw.get("status") or "idle",
-            "current_epoch": raw.get("current_epoch") or 0,
-            "total_epochs": raw.get("total_epochs") or 0,
-            "current_step": raw.get("current_step") or 0,
-            "total_steps": raw.get("total_steps") or 0,
-            "loss": raw.get("loss"),
-            "loss_history": raw.get("loss_history") or [],
-            "metrics": raw.get("metrics") or {},
-            "error": raw.get("error"),
-            "batch_size": raw.get("batch_size") or 1,
-            "model_name": raw.get("model_name") or "tiny-router",
-            "tokenizer_name": raw.get("tokenizer_name") or "sentencepiece-bpe",
-            "output_root_dir": raw.get("output_root_dir"),
-            "artifact_name": raw.get("artifact_name") or "tiny_router_v1",
-            "checkpoint_path": raw.get("checkpoint_path"),
-            "model_path": raw.get("model_path"),
-            "tokenizer_path": raw.get("tokenizer_path"),
-            "dataset_path": raw.get("dataset_path"),
-            "dataset_sha1": raw.get("dataset_sha1"),
-            "dataset_row_count": raw.get("dataset_row_count") or 0,
-            "eval_total": raw.get("eval_total") or 0,
-            "eval_valid": raw.get("eval_valid") or 0,
-            "eval_exact": raw.get("eval_exact") or 0,
-            "eval_positive_total": raw.get("eval_positive_total") or 0,
-            "eval_positive_exact": raw.get("eval_positive_exact") or 0,
-            "eval_fallback_total": raw.get("eval_fallback_total") or 0,
-            "eval_fallback_exact": raw.get("eval_fallback_exact") or 0,
-        }
-    )
+    return TrainingStatusResponse.from_service_payload(payload)
 
 
 def _to_service_tool(tool: dict) -> dict:
@@ -105,17 +76,10 @@ def _resolve_output_root(output_root_dir: str) -> Path:
 
 
 def _normalize_artifact_name(artifact_name: str) -> str:
-    normalized = artifact_name.strip()
-    for suffix in (".pt", ".model", ".vocab"):
-        if normalized.endswith(suffix):
-            normalized = normalized[: -len(suffix)]
-            break
-    normalized = normalized.strip().strip("./")
-    if not normalized:
-        raise HTTPException(status_code=400, detail="artifact_name must be a non-empty file stem")
-    if Path(normalized).name != normalized:
-        raise HTTPException(status_code=400, detail="artifact_name must not contain path separators")
-    return normalized
+    try:
+        return normalize_training_artifact_name(artifact_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _load_workspace_settings() -> WorkspaceSettingsResponse:
@@ -137,6 +101,16 @@ def _update_workspace_settings(updates: dict) -> WorkspaceSettingsResponse:
         return update_workspace_settings(updates)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _workspace_sections(
+    workspace: WorkspaceSettingsResponse,
+) -> tuple[WorkspaceModelSettings, WorkspaceTrainingSettings, WorkspaceTestSettings]:
+    return (
+        cast(WorkspaceModelSettings, workspace.selected_model),
+        cast(WorkspaceTrainingSettings, workspace.training),
+        cast(WorkspaceTestSettings, workspace.test),
+    )
 
 
 def _coalesce_str(value: str | None, fallback: str) -> str:
@@ -326,13 +300,14 @@ def get_training_status() -> TrainingStatusResponse:
 
     if status.model_path and status.tokenizer_path:
         workspace = _load_workspace_settings()
+        selected_model, _training, _test = _workspace_sections(workspace)
         updates["selected_model"] = {
             "mode": "loaded",
-            "label": status.artifact_name or workspace.selected_model.label,
-            "model_name": status.model_name or workspace.selected_model.model_name,
-            "tokenizer_name": status.tokenizer_name or workspace.selected_model.tokenizer_name,
-            "output_root_dir": status.output_root_dir or workspace.selected_model.output_root_dir,
-            "artifact_name": status.artifact_name or workspace.selected_model.artifact_name,
+            "label": status.artifact_name or selected_model.label,
+            "model_name": status.model_name or selected_model.model_name,
+            "tokenizer_name": status.tokenizer_name or selected_model.tokenizer_name,
+            "output_root_dir": status.output_root_dir or selected_model.output_root_dir,
+            "artifact_name": status.artifact_name or selected_model.artifact_name,
             "model_path": status.model_path,
             "tokenizer_path": status.tokenizer_path,
         }
@@ -368,13 +343,14 @@ async def import_model(
         vocab_path.write_bytes(await vocab.read())
 
     workspace = _load_workspace_settings()
+    selected_model, _training, _test = _workspace_sections(workspace)
     _update_workspace_settings(
         {
             "selected_model": {
                 "mode": "loaded",
                 "label": normalized_artifact_name,
-                "model_name": workspace.selected_model.model_name,
-                "tokenizer_name": workspace.selected_model.tokenizer_name,
+                "model_name": selected_model.model_name,
+                "tokenizer_name": selected_model.tokenizer_name,
                 "output_root_dir": str(resolved_output_root),
                 "artifact_name": normalized_artifact_name,
                 "model_path": str(model_path),
@@ -395,30 +371,31 @@ async def import_model(
 @app.post("/api/training/start", response_model=TrainingStatusResponse)
 def start_training(payload: TrainingStartPayload) -> TrainingStatusResponse:
     workspace = _load_workspace_settings()
+    selected_model, training_settings, _test_settings = _workspace_sections(workspace)
     payload_fields = payload.model_fields_set
 
-    dataset_name = _coalesce_str(payload.dataset_name, workspace.training.dataset_name)
-    epochs = _coalesce_int(payload.epochs, workspace.training.epochs)
-    batch_size = _coalesce_int(payload.batch_size, workspace.training.batch_size)
-    model_name = _coalesce_str(payload.model_name, workspace.selected_model.model_name)
-    tokenizer_name = _coalesce_str(payload.tokenizer_name, workspace.selected_model.tokenizer_name)
-    output_root_dir = _coalesce_str(payload.output_root_dir, workspace.selected_model.output_root_dir)
-    artifact_name = _normalize_artifact_name(_coalesce_str(payload.artifact_name, workspace.selected_model.artifact_name))
-    hidden_dim = _coalesce_int(payload.hidden_dim, workspace.selected_model.hidden_dim)
-    num_layers = _coalesce_int(payload.num_layers, workspace.selected_model.num_layers)
-    num_heads = _coalesce_int(payload.num_heads, workspace.selected_model.num_heads)
+    dataset_name = _coalesce_str(payload.dataset_name, training_settings.dataset_name)
+    epochs = _coalesce_int(payload.epochs, training_settings.epochs)
+    batch_size = _coalesce_int(payload.batch_size, training_settings.batch_size)
+    model_name = _coalesce_str(payload.model_name, selected_model.model_name)
+    tokenizer_name = _coalesce_str(payload.tokenizer_name, selected_model.tokenizer_name)
+    output_root_dir = _coalesce_str(payload.output_root_dir, selected_model.output_root_dir)
+    artifact_name = _normalize_artifact_name(_coalesce_str(payload.artifact_name, selected_model.artifact_name))
+    hidden_dim = _coalesce_int(payload.hidden_dim, selected_model.hidden_dim)
+    num_layers = _coalesce_int(payload.num_layers, selected_model.num_layers)
+    num_heads = _coalesce_int(payload.num_heads, selected_model.num_heads)
 
     if "resume_model_path" in payload_fields:
         resume_model_path = payload.resume_model_path
-    elif workspace.selected_model.mode == "loaded":
-        resume_model_path = workspace.selected_model.model_path
+    elif selected_model.mode == "loaded":
+        resume_model_path = selected_model.model_path
     else:
         resume_model_path = None
 
     if "resume_tokenizer_path" in payload_fields:
         resume_tokenizer_path = payload.resume_tokenizer_path
-    elif workspace.selected_model.mode == "loaded":
-        resume_tokenizer_path = workspace.selected_model.tokenizer_path
+    elif selected_model.mode == "loaded":
+        resume_tokenizer_path = selected_model.tokenizer_path
     else:
         resume_tokenizer_path = None
 
@@ -486,9 +463,10 @@ def run_test(payload: TestPayload) -> TestResponse:
 
     service_tools = _to_service_tools(tools)
     workspace = _load_workspace_settings()
-    model_path = payload.model_path or workspace.selected_model.model_path
-    tokenizer_path = payload.tokenizer_path or workspace.selected_model.tokenizer_path
-    answer_allowed = workspace.test.answer_allowed if payload.answer_allowed is None else payload.answer_allowed
+    selected_model, _training_settings, test_settings = _workspace_sections(workspace)
+    model_path = payload.model_path or selected_model.model_path
+    tokenizer_path = payload.tokenizer_path or selected_model.tokenizer_path
+    answer_allowed = test_settings.answer_allowed if payload.answer_allowed is None else payload.answer_allowed
 
     result_payload = service_client.post_json(
         "/chat/completions",

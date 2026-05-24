@@ -1,27 +1,9 @@
 import type { TrainingStatus } from "../api";
+import { formatTrainingStatusLabel } from "../trainingStatus";
 
 
-type TrainingProgressProps = {
+export interface TrainingProgressProps {
   status: TrainingStatus | null;
-};
-
-
-function formatTrainingStatusLabel(status: string | null | undefined): string {
-  switch (status) {
-    case "running":
-      return "running";
-    case "completed":
-    case "success":
-      return "complete";
-    case "failed":
-      return "failed";
-    case "idle":
-    case undefined:
-    case null:
-      return "no run yet";
-    default:
-      return status.split("_").join(" ");
-  }
 }
 
 

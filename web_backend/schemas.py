@@ -13,6 +13,14 @@ def _default_schema() -> dict[str, Any]:
     }
 
 
+def _coalesce_training_status_value(value: Any, fallback: Any) -> Any:
+    if fallback is None:
+        return value
+    if isinstance(fallback, int):
+        return fallback if value is None else value
+    return value or fallback
+
+
 class ToolDefinition(BaseModel):
     name: str
     description: str = ""
@@ -206,6 +214,16 @@ class TrainingStatusResponse(BaseModel):
     eval_positive_exact: int = 0
     eval_fallback_total: int = 0
     eval_fallback_exact: int = 0
+
+    @classmethod
+    def from_service_payload(cls, payload: dict[str, Any] | None) -> "TrainingStatusResponse":
+        raw = payload or {}
+        defaults = cls().model_dump()
+        normalized = {
+            field_name: _coalesce_training_status_value(raw.get(field_name), fallback)
+            for field_name, fallback in defaults.items()
+        }
+        return cls.model_validate(normalized)
 
 
 class TestPayload(BaseModel):

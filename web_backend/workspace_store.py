@@ -20,8 +20,12 @@ def _validate_settings(payload: dict[str, Any]) -> WorkspaceSettingsPayload:
         raise ValueError(f"Invalid workspace settings: {exc}") from exc
 
 
-def _read_settings_file() -> WorkspaceSettingsPayload:
-    path = get_workspace_settings_file()
+def _workspace_settings_path():
+    return get_workspace_settings_file()
+
+
+def _read_settings_payload() -> WorkspaceSettingsPayload:
+    path = _workspace_settings_path()
     if not path.exists():
         return _default_settings()
 
@@ -33,29 +37,37 @@ def _read_settings_file() -> WorkspaceSettingsPayload:
     return _validate_settings(raw)
 
 
-def _write_settings_file(settings: WorkspaceSettingsPayload) -> WorkspaceSettingsResponse:
-    path = get_workspace_settings_file()
+def _build_settings_response(settings: WorkspaceSettingsPayload) -> WorkspaceSettingsResponse:
+    return WorkspaceSettingsResponse(**settings.model_dump(), storage_path=str(_workspace_settings_path()))
+
+
+def _write_settings_payload(settings: WorkspaceSettingsPayload) -> WorkspaceSettingsResponse:
+    path = _workspace_settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(settings.model_dump(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return WorkspaceSettingsResponse(**settings.model_dump(), storage_path=str(path))
+    return _build_settings_response(settings)
 
 
-def load_workspace_settings() -> WorkspaceSettingsResponse:
-    settings = _read_settings_file()
-    return _write_settings_file(settings)
-
-
-def save_workspace_settings(payload: WorkspaceSettingsPayload | dict[str, Any]) -> WorkspaceSettingsResponse:
-    settings = payload if isinstance(payload, WorkspaceSettingsPayload) else _validate_settings(payload)
-    return _write_settings_file(settings)
-
-
-def update_workspace_settings(updates: dict[str, Any]) -> WorkspaceSettingsResponse:
-    current = _read_settings_file().model_dump()
-    merged = current.copy()
+def _merge_settings_payload(current: WorkspaceSettingsPayload, updates: dict[str, Any]) -> WorkspaceSettingsPayload:
+    merged = current.model_dump()
     for section, values in updates.items():
         if isinstance(values, dict) and isinstance(merged.get(section), dict):
             merged[section] = {**merged[section], **values}
         else:
             merged[section] = values
-    return save_workspace_settings(merged)
+    return _validate_settings(merged)
+
+
+def load_workspace_settings() -> WorkspaceSettingsResponse:
+    settings = _read_settings_payload()
+    return _write_settings_payload(settings)
+
+
+def save_workspace_settings(payload: WorkspaceSettingsPayload | dict[str, Any]) -> WorkspaceSettingsResponse:
+    settings = payload if isinstance(payload, WorkspaceSettingsPayload) else _validate_settings(payload)
+    return _write_settings_payload(settings)
+
+
+def update_workspace_settings(updates: dict[str, Any]) -> WorkspaceSettingsResponse:
+    merged = _merge_settings_payload(_read_settings_payload(), updates)
+    return _write_settings_payload(merged)

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { runTest, type TestResponse, type WorkspaceModel, type WorkspaceTestSettings } from "../api";
 import { DebugPanel } from "../components/DebugPanel";
+import { usePersistedTestDraft } from "../usePersistedTestDraft";
 
 
 type TestRouteProps = {
@@ -28,38 +29,20 @@ function formatResultStatus(status: string): string {
 
 
 export function TestRoute({ selectedModel, testSettings, onTestSettingsChange }: TestRouteProps) {
-  const [userText, setUserText] = useState(testSettings.user_text);
-  const [showDebug, setShowDebug] = useState(testSettings.show_debug);
   const [result, setResult] = useState<TestResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const {
+    userText,
+    setUserText,
+    showDebug,
+    setShowDebug,
+    settingsError,
+  } = usePersistedTestDraft({
+    testSettings,
+    onTestSettingsChange,
+  });
   const modelReady = Boolean(selectedModel.model_path && selectedModel.tokenizer_path);
-
-  useEffect(() => {
-    setUserText(testSettings.user_text);
-    setShowDebug(testSettings.show_debug);
-  }, [testSettings.show_debug, testSettings.user_text]);
-
-  useEffect(() => {
-    if (userText === testSettings.user_text && showDebug === testSettings.show_debug) {
-      return undefined;
-    }
-
-    const timeout = window.setTimeout(() => {
-      void onTestSettingsChange({
-        ...testSettings,
-        user_text: userText,
-        show_debug: showDebug,
-      }).then(() => {
-        setSettingsError(null);
-      }).catch((saveError) => {
-        setSettingsError(saveError instanceof Error ? saveError.message : "Could not save test settings.");
-      });
-    }, 250);
-
-    return () => window.clearTimeout(timeout);
-  }, [onTestSettingsChange, showDebug, testSettings, userText]);
 
   async function handleRun() {
     setIsRunning(true);

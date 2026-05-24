@@ -29,6 +29,16 @@ type DatasetTrainingRouteProps = {
 };
 
 
+type DatasetTrainingSummary = {
+  hasDatasets: boolean;
+  isRunning: boolean;
+  datasetFileLabel: string;
+  datasetRows: number;
+  datasetSha: string;
+  canStartTraining: boolean;
+};
+
+
 function formatDatasetSource(source: DatasetSummary["source"]): string {
   switch (source) {
     case "tools_bootstrap":
@@ -48,25 +58,6 @@ function formatModelMode(mode: WorkspaceModel["mode"]): string {
 }
 
 
-function formatTrainingStatusLabel(status: string | null | undefined): string {
-  switch (status) {
-    case "running":
-      return "running";
-    case "completed":
-    case "success":
-      return "complete";
-    case "failed":
-      return "failed";
-    case "idle":
-    case undefined:
-    case null:
-      return "no run yet";
-    default:
-      return status.split("_").join(" ");
-  }
-}
-
-
 function formatDatasetFile(status: TrainingStatus | null, fallbackName: string): string {
   if (status?.dataset_path) {
     return status.dataset_path.split("/").pop() || fallbackName;
@@ -80,6 +71,316 @@ function formatSha(sha: string | null | undefined): string {
     return "pending";
   }
   return sha.slice(0, 12);
+}
+
+
+function buildDatasetTrainingSummary(
+  datasets: DatasetSummary[],
+  selectedDataset: string,
+  selectedDatasetDetails: DatasetSummary | null,
+  selectedModel: WorkspaceModel,
+  status: TrainingStatus | null,
+  isStarting: boolean,
+): DatasetTrainingSummary {
+  const hasDatasets = datasets.length > 0;
+  const isRunning = status?.status === "running";
+  const datasetFileLabel = selectedDataset ? formatDatasetFile(status, selectedDataset) : "-";
+  const datasetRows = status?.dataset_path && status.dataset_row_count > 0
+    ? status.dataset_row_count
+    : selectedDatasetDetails?.row_count ?? 0;
+  const datasetSha = selectedDatasetDetails?.sha1
+    ? formatSha(selectedDatasetDetails.sha1)
+    : status?.dataset_path && datasetFileLabel === selectedDataset
+      ? formatSha(status.dataset_sha1)
+      : "pending";
+  const canStartTraining = Boolean(
+    selectedDataset.trim()
+    && selectedModel.output_root_dir.trim()
+    && selectedModel.artifact_name.trim()
+    && !isRunning
+    && !isStarting
+  );
+
+  return {
+    hasDatasets,
+    isRunning,
+    datasetFileLabel,
+    datasetRows,
+    datasetSha,
+    canStartTraining,
+  };
+}
+
+
+function NoticeBanner({ notice }: { notice: Notice | null }) {
+  if (!notice) {
+    return null;
+  }
+
+  return (
+    <div className={`feedback feedback--${notice.tone}`}>
+      <strong>{notice.title}</strong>
+      {notice.body ? <p>{notice.body}</p> : null}
+    </div>
+  );
+}
+
+
+type DatasetTrainingHeaderProps = {
+  description: string;
+  datasetCount?: number;
+};
+
+
+function DatasetTrainingHeader({ description, datasetCount }: DatasetTrainingHeaderProps) {
+  return (
+    <header className="page-header">
+      <div>
+        <h1>Dataset + Training</h1>
+        <p>{description}</p>
+      </div>
+      {datasetCount == null ? null : (
+        <div className="page-header__meta">
+          <span className="pill">{datasetCount} discovered files</span>
+        </div>
+      )}
+    </header>
+  );
+}
+
+
+function LoadingState() {
+  return (
+    <section className="page">
+      <DatasetTrainingHeader description="Load the dataset library and the current run state." />
+      <div className="panel panel--soft empty-state">
+        <h2>Loading workflow state</h2>
+        <p>Fetching available datasets and training progress from the backend.</p>
+      </div>
+    </section>
+  );
+}
+
+
+function ErrorState({ notice }: { notice: Notice | null }) {
+  return (
+    <section className="page">
+      <DatasetTrainingHeader description="Select a dataset and use the active model from the header for train or fine-tune." />
+      <NoticeBanner notice={notice} />
+    </section>
+  );
+}
+
+
+type DatasetPanelProps = {
+  datasets: DatasetSummary[];
+  selectedDataset: string;
+  selectedDatasetDetails: DatasetSummary | null;
+  summary: DatasetTrainingSummary;
+  onRefresh: () => void;
+  onDatasetChange: (datasetName: string) => void;
+  onValidate: () => void;
+};
+
+
+function DatasetPanel({
+  datasets,
+  selectedDataset,
+  selectedDatasetDetails,
+  summary,
+  onRefresh,
+  onDatasetChange,
+  onValidate,
+}: DatasetPanelProps) {
+  return (
+    <section className="panel dataset-panel">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">Dataset</span>
+          <h2>Choose training file</h2>
+        </div>
+        <button className="button button--secondary" type="button" onClick={onRefresh}>
+          Refresh files
+        </button>
+      </div>
+
+      <div className="tool-editor__grid">
+        <label className="field field--wide">
+          <span>Dataset file</span>
+          <select
+            className="input"
+            value={selectedDataset}
+            disabled={summary.isRunning || !summary.hasDatasets}
+            onChange={(event) => onDatasetChange(event.target.value)}
+          >
+            {summary.hasDatasets ? null : <option value="">No datasets found</option>}
+            {datasets.map((dataset) => (
+              <option key={dataset.name} value={dataset.name}>
+                {dataset.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {selectedDatasetDetails ? (
+        <div className="dataset-summary panel panel--soft">
+          <div>
+            <span>File</span>
+            <strong>{summary.datasetFileLabel}</strong>
+          </div>
+          <div>
+            <span>Source</span>
+            <strong>{formatDatasetSource(selectedDatasetDetails.source)}</strong>
+          </div>
+          <div>
+            <span>Rows</span>
+            <strong>{summary.datasetRows}</strong>
+          </div>
+          <div>
+            <span>SHA1</span>
+            <strong>{summary.datasetSha}</strong>
+          </div>
+          <div>
+            <span>Validation</span>
+            <strong>{selectedDatasetDetails.validation_status}</strong>
+          </div>
+          <div>
+            <span>Issues</span>
+            <strong>{selectedDatasetDetails.issue_count}</strong>
+          </div>
+        </div>
+      ) : (
+        <p className="page-note">Refresh files if the dataset you expect is missing from the picker.</p>
+      )}
+
+      <div className="action-bar action-bar--static">
+        <div className="action-bar__status">
+          {selectedDataset ? (
+            <span className="pill">{selectedDataset}</span>
+          ) : (
+            <span className="pill pill--warning">Choose a dataset file</span>
+          )}
+        </div>
+        <div className="action-bar__actions">
+          <button className="button button--secondary" type="button" disabled={!selectedDataset.trim()} onClick={onValidate}>
+            Validate
+          </button>
+          {selectedDatasetDetails ? (
+            <a className="button button--secondary" href={getDatasetDownloadUrl(selectedDatasetDetails.name)}>
+              Export
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+type TrainingPanelProps = {
+  selectedModel: WorkspaceModel;
+  selectedDataset: string;
+  epochs: number;
+  batchSize: number;
+  isStarting: boolean;
+  summary: DatasetTrainingSummary;
+  onEpochsChange: (value: number) => void;
+  onBatchSizeChange: (value: number) => void;
+  onStartTraining: () => void;
+};
+
+
+function TrainingPanel({
+  selectedModel,
+  selectedDataset,
+  epochs,
+  batchSize,
+  isStarting,
+  summary,
+  onEpochsChange,
+  onBatchSizeChange,
+  onStartTraining,
+}: TrainingPanelProps) {
+  return (
+    <section className="panel training-panel">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">Training</span>
+          <h2>{selectedModel.mode === "loaded" ? "Fine-tune selected model" : "Train selected model"}</h2>
+        </div>
+      </div>
+
+      <div className="dataset-summary panel panel--soft">
+        <div>
+          <span>Mode</span>
+          <strong>{formatModelMode(selectedModel.mode)}</strong>
+        </div>
+        <div>
+          <span>Save root</span>
+          <strong>{selectedModel.output_root_dir}</strong>
+        </div>
+        <div>
+          <span>Save as</span>
+          <strong>{selectedModel.artifact_name}</strong>
+        </div>
+        <div>
+          <span>Shape</span>
+          <strong>{selectedModel.hidden_dim} / {selectedModel.num_layers} / {selectedModel.num_heads}</strong>
+        </div>
+        <div>
+          <span>Checkpoint</span>
+          <strong>{selectedModel.model_path ? "ready" : "not saved yet"}</strong>
+        </div>
+      </div>
+
+      <div className="tool-editor__grid">
+        <label className="field">
+          <span>Epochs</span>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            value={epochs}
+            disabled={summary.isRunning}
+            onChange={(event) => onEpochsChange(Number(event.target.value) || 1)}
+          />
+        </label>
+
+        <label className="field">
+          <span>Batch size</span>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            value={batchSize}
+            disabled={summary.isRunning}
+            onChange={(event) => onBatchSizeChange(Number(event.target.value) || 1)}
+          />
+        </label>
+      </div>
+
+      <div className="action-bar action-bar--static">
+        <div className="action-bar__status">
+          {selectedDataset ? (
+            <span className="pill">{selectedDataset}</span>
+          ) : (
+            <span className="pill pill--warning">Choose a dataset first</span>
+          )}
+        </div>
+        <div className="action-bar__actions">
+          <button
+            className="button button--primary"
+            disabled={!summary.canStartTraining}
+            onClick={onStartTraining}
+            type="button"
+          >
+            {isStarting ? "Starting..." : summary.isRunning ? "Training in progress" : "Start training"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 
@@ -98,6 +399,15 @@ export function DatasetTrainingRoute({
   const selectedDataset = trainingSettings.dataset_name;
   const epochs = trainingSettings.epochs;
   const batchSize = trainingSettings.batch_size;
+  const selectedDatasetDetails = datasets.find((dataset) => dataset.name === selectedDataset) ?? null;
+  const summary = buildDatasetTrainingSummary(
+    datasets,
+    selectedDataset,
+    selectedDatasetDetails,
+    selectedModel,
+    status,
+    isStarting,
+  );
 
   async function persistTrainingSettings(next: WorkspaceTrainingSettings) {
     try {
@@ -240,251 +550,63 @@ export function DatasetTrainingRoute({
     }
   }
 
-  const selectedDatasetDetails = datasets.find((dataset) => dataset.name === selectedDataset) ?? null;
-  const hasDatasets = datasets.length > 0;
-  const isRunning = status?.status === "running";
-  const datasetFileLabel = selectedDataset ? formatDatasetFile(status, selectedDataset) : "-";
-  const datasetRows = status?.dataset_path && status.dataset_row_count > 0
-    ? status.dataset_row_count
-    : selectedDatasetDetails?.row_count ?? 0;
-  const datasetSha = selectedDatasetDetails?.sha1
-    ? formatSha(selectedDatasetDetails.sha1)
-    : status?.dataset_path && datasetFileLabel === selectedDataset
-      ? formatSha(status.dataset_sha1)
-      : "pending";
-  const canStartTraining = Boolean(
-    selectedDataset.trim()
-    && selectedModel.output_root_dir.trim()
-    && selectedModel.artifact_name.trim()
-    && !isRunning
-    && !isStarting
-  );
+  function handleDatasetChange(datasetName: string) {
+    void persistTrainingSettings({
+      ...trainingSettings,
+      dataset_name: datasetName,
+    });
+  }
+
+  function handleEpochsChange(value: number) {
+    void persistTrainingSettings({
+      ...trainingSettings,
+      epochs: value,
+    });
+  }
+
+  function handleBatchSizeChange(value: number) {
+    void persistTrainingSettings({
+      ...trainingSettings,
+      batch_size: value,
+    });
+  }
 
   if (loadState === "loading") {
-    return (
-      <section className="page">
-        <header className="page-header">
-          <div>
-            <h1>Dataset + Training</h1>
-            <p>Load the dataset library and the current run state.</p>
-          </div>
-        </header>
-        <div className="panel panel--soft empty-state">
-          <h2>Loading workflow state</h2>
-          <p>Fetching available datasets and training progress from the backend.</p>
-        </div>
-      </section>
-    );
+    return <LoadingState />;
   }
 
   if (loadState === "error") {
-    return (
-      <section className="page">
-        <header className="page-header">
-          <div>
-            <h1>Dataset + Training</h1>
-            <p>Select a dataset and use the active model from the header for train or fine-tune.</p>
-          </div>
-        </header>
-        {notice ? (
-          <div className={`feedback feedback--${notice.tone}`}>
-            <strong>{notice.title}</strong>
-            {notice.body ? <p>{notice.body}</p> : null}
-          </div>
-        ) : null}
-      </section>
-    );
+    return <ErrorState notice={notice} />;
   }
 
   return (
     <section className="page">
-      <header className="page-header">
-        <div>
-          <h1>Dataset + Training</h1>
-          <p>Choose a dataset and start training.</p>
-        </div>
-        <div className="page-header__meta">
-          <span className="pill">{datasets.length} discovered files</span>
-        </div>
-      </header>
-
-      {notice ? (
-        <div className={`feedback feedback--${notice.tone}`}>
-          <strong>{notice.title}</strong>
-          {notice.body ? <p>{notice.body}</p> : null}
-        </div>
-      ) : null}
+      <DatasetTrainingHeader description="Choose a dataset and start training." datasetCount={datasets.length} />
+      <NoticeBanner notice={notice} />
 
       <div className="dataset-training-layout">
         <div className="dataset-training-main">
-          <section className="panel dataset-panel">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Dataset</span>
-                <h2>Choose training file</h2>
-              </div>
-              <button className="button button--secondary" type="button" onClick={() => void reloadDatasets()}>
-                Refresh files
-              </button>
-            </div>
+          <DatasetPanel
+            datasets={datasets}
+            selectedDataset={selectedDataset}
+            selectedDatasetDetails={selectedDatasetDetails}
+            summary={summary}
+            onRefresh={() => void reloadDatasets()}
+            onDatasetChange={handleDatasetChange}
+            onValidate={() => void handleValidateDataset(selectedDataset)}
+          />
 
-            <div className="tool-editor__grid">
-              <label className="field field--wide">
-                <span>Dataset file</span>
-                <select
-                  className="input"
-                  value={selectedDataset}
-                  disabled={isRunning || !hasDatasets}
-                  onChange={(event) => void persistTrainingSettings({
-                    ...trainingSettings,
-                    dataset_name: event.target.value,
-                  })}
-                >
-                  {hasDatasets ? null : <option value="">No datasets found</option>}
-                  {datasets.map((dataset) => (
-                    <option key={dataset.name} value={dataset.name}>
-                      {dataset.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {selectedDatasetDetails ? (
-              <div className="dataset-summary panel panel--soft">
-                <div>
-                  <span>File</span>
-                  <strong>{datasetFileLabel}</strong>
-                </div>
-                <div>
-                  <span>Source</span>
-                  <strong>{formatDatasetSource(selectedDatasetDetails.source)}</strong>
-                </div>
-                <div>
-                  <span>Rows</span>
-                  <strong>{datasetRows}</strong>
-                </div>
-                <div>
-                  <span>SHA1</span>
-                  <strong>{datasetSha}</strong>
-                </div>
-                <div>
-                  <span>Validation</span>
-                  <strong>{selectedDatasetDetails.validation_status}</strong>
-                </div>
-                <div>
-                  <span>Issues</span>
-                  <strong>{selectedDatasetDetails.issue_count}</strong>
-                </div>
-              </div>
-            ) : (
-              <p className="page-note">Refresh files if the dataset you expect is missing from the picker.</p>
-            )}
-
-            <div className="action-bar action-bar--static">
-              <div className="action-bar__status">
-                {selectedDataset ? (
-                  <span className="pill">{selectedDataset}</span>
-                ) : (
-                  <span className="pill pill--warning">Choose a dataset file</span>
-                )}
-              </div>
-              <div className="action-bar__actions">
-                <button className="button button--secondary" type="button" disabled={!selectedDataset.trim()} onClick={() => void handleValidateDataset(selectedDataset)}>
-                  Validate
-                </button>
-                {selectedDatasetDetails ? (
-                  <a className="button button--secondary" href={getDatasetDownloadUrl(selectedDatasetDetails.name)}>
-                    Export
-                  </a>
-                ) : null}
-              </div>
-            </div>
-          </section>
-
-          <section className="panel training-panel">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Training</span>
-                <h2>{selectedModel.mode === "loaded" ? "Fine-tune selected model" : "Train selected model"}</h2>
-              </div>
-            </div>
-
-            <div className="dataset-summary panel panel--soft">
-              <div>
-                <span>Mode</span>
-                <strong>{formatModelMode(selectedModel.mode)}</strong>
-              </div>
-              <div>
-                <span>Save root</span>
-                <strong>{selectedModel.output_root_dir}</strong>
-              </div>
-              <div>
-                <span>Save as</span>
-                <strong>{selectedModel.artifact_name}</strong>
-              </div>
-              <div>
-                <span>Shape</span>
-                <strong>{selectedModel.hidden_dim} / {selectedModel.num_layers} / {selectedModel.num_heads}</strong>
-              </div>
-              <div>
-                <span>Checkpoint</span>
-                <strong>{selectedModel.model_path ? "ready" : "not saved yet"}</strong>
-              </div>
-            </div>
-
-            <div className="tool-editor__grid">
-              <label className="field">
-                <span>Epochs</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  value={epochs}
-                  disabled={isRunning}
-                  onChange={(event) => void persistTrainingSettings({
-                    ...trainingSettings,
-                    epochs: Number(event.target.value) || 1,
-                  })}
-                />
-              </label>
-
-              <label className="field">
-                <span>Batch size</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  value={batchSize}
-                  disabled={isRunning}
-                  onChange={(event) => void persistTrainingSettings({
-                    ...trainingSettings,
-                    batch_size: Number(event.target.value) || 1,
-                  })}
-                />
-              </label>
-            </div>
-
-            <div className="action-bar action-bar--static">
-              <div className="action-bar__status">
-                {selectedDataset ? (
-                  <span className="pill">{selectedDataset}</span>
-                ) : (
-                  <span className="pill pill--warning">Choose a dataset first</span>
-                )}
-              </div>
-              <div className="action-bar__actions">
-                <button
-                  className="button button--primary"
-                  disabled={!canStartTraining}
-                  onClick={() => void handleStartTraining()}
-                  type="button"
-                >
-                  {isStarting ? "Starting..." : isRunning ? "Training in progress" : "Start training"}
-                </button>
-              </div>
-            </div>
-          </section>
+          <TrainingPanel
+            selectedModel={selectedModel}
+            selectedDataset={selectedDataset}
+            epochs={epochs}
+            batchSize={batchSize}
+            isStarting={isStarting}
+            summary={summary}
+            onEpochsChange={handleEpochsChange}
+            onBatchSizeChange={handleBatchSizeChange}
+            onStartTraining={() => void handleStartTraining()}
+          />
         </div>
 
         <TrainingProgress status={status} />
