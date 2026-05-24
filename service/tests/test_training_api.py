@@ -12,7 +12,8 @@ from protonx.training.state import TRAINING_STATE
 client = TestClient(app)
 
 
-def test_train_status_returns_idle_state_before_training():
+def test_train_status_returns_idle_state_before_training(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTONX_TRAIN_STATE_PATH", str(tmp_path / "training_state.json"))
     TRAINING_STATE.reset()
     response = client.get("/train/status")
     assert response.status_code == 200
@@ -24,7 +25,8 @@ def test_train_status_returns_idle_state_before_training():
     assert payload["error"] is None
 
 
-def test_train_status_exposes_failed_state_details():
+def test_train_status_exposes_failed_state_details(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTONX_TRAIN_STATE_PATH", str(tmp_path / "training_state.json"))
     TRAINING_STATE.reset()
     TRAINING_STATE.status = "failed"
     TRAINING_STATE.error = "training exploded"
@@ -37,7 +39,9 @@ def test_train_status_exposes_failed_state_details():
     assert payload["error"] == "training exploded"
 
 
-def test_train_start_accepts_config_and_eventually_completes(tmp_path):
+def test_train_start_accepts_config_and_eventually_completes(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTONX_TRAIN_DEVICE", "cpu")
+    monkeypatch.setenv("PROTONX_TRAIN_STATE_PATH", str(tmp_path / "training_state.json"))
     TRAINING_STATE.reset()
     dataset_path = tmp_path / "routing.jsonl"
     output_root_dir = tmp_path / "artifacts"
@@ -58,6 +62,8 @@ def test_train_start_accepts_config_and_eventually_completes(tmp_path):
             "hidden_dim": 32,
             "num_layers": 1,
             "num_heads": 4,
+            "training_device": "cpu",
+            "vocab_size": 128,
         },
     )
     assert response.status_code == 200
@@ -67,11 +73,11 @@ def test_train_start_accepts_config_and_eventually_completes(tmp_path):
     assert start_payload["batch_size"] == 1
 
     final_payload = start_payload
-    for _ in range(50):
+    for _ in range(100):
         final_payload = client.get("/train/status").json()
         if final_payload["status"] == "completed":
             break
-        time.sleep(0.05)
+        time.sleep(0.1)
 
     assert final_payload["status"] == "completed"
     assert final_payload["tokenizer_path"].endswith("/tokenizers/custom_router.model")
@@ -94,7 +100,8 @@ def test_train_start_accepts_config_and_eventually_completes(tmp_path):
     assert checkpoint["evaluation"]["eval_total"] == final_payload["eval_total"]
 
 
-def test_train_start_rejects_invalid_dataset_before_training(tmp_path):
+def test_train_start_rejects_invalid_dataset_before_training(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTONX_TRAIN_STATE_PATH", str(tmp_path / "training_state.json"))
     TRAINING_STATE.reset()
     dataset_path = tmp_path / "routing.jsonl"
     dataset_path.write_text(

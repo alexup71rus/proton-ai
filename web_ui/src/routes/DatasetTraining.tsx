@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   fetchDatasets,
@@ -27,6 +27,8 @@ type DatasetTrainingRouteProps = {
   onTrainingSettingsChange: (next: WorkspaceTrainingSettings) => Promise<void>;
   onModelResolved: (status: TrainingStatus) => void;
 };
+
+const TRAINING_STATUS_POLL_MS = 1200 * 2;
 
 
 type DatasetTrainingSummary = {
@@ -395,6 +397,7 @@ export function DatasetTrainingRoute({
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const onModelResolvedRef = useRef(onModelResolved);
 
   const selectedDataset = trainingSettings.dataset_name;
   const epochs = trainingSettings.epochs;
@@ -451,6 +454,10 @@ export function DatasetTrainingRoute({
   }
 
   useEffect(() => {
+    onModelResolvedRef.current = onModelResolved;
+  }, [onModelResolved]);
+
+  useEffect(() => {
     void loadScreen();
   }, []);
 
@@ -459,17 +466,39 @@ export function DatasetTrainingRoute({
       return undefined;
     }
 
-    const interval = window.setInterval(() => {
-      void fetchTrainingStatus().then((payload) => {
+    let cancelled = false;
+    let timeout: number | undefined;
+
+    async function pollTrainingStatus() {
+      let shouldContinue = true;
+      try {
+        const payload = await fetchTrainingStatus();
+        if (cancelled) {
+          return;
+        }
         setStatus(payload);
         if (payload.model_path && payload.tokenizer_path) {
-          onModelResolved(payload);
+          onModelResolvedRef.current(payload);
         }
-      }).catch(() => undefined);
-    }, 1200);
+        shouldContinue = payload.status === "running";
+      } catch {
+        shouldContinue = true;
+      } finally {
+        if (!cancelled && shouldContinue) {
+          timeout = window.setTimeout(pollTrainingStatus, TRAINING_STATUS_POLL_MS);
+        }
+      }
+    }
 
-    return () => window.clearInterval(interval);
-  }, [onModelResolved, status?.status]);
+    timeout = window.setTimeout(pollTrainingStatus, TRAINING_STATUS_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      if (timeout !== undefined) {
+        window.clearTimeout(timeout);
+      }
+    };
+  }, [status?.status]);
 
   async function reloadDatasets(preserveSelection = true) {
     const payload = await fetchDatasets();

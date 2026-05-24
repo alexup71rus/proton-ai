@@ -11,28 +11,21 @@ from protonx.training.format import serialize_assistant_payload
 
 SPECIAL_HOLDOUT_REQUESTS: dict[str, list[str]] = {
     "list_downloads": [
-        "what is currently inside the Downloads directory",
         "что сейчас лежит в директории загрузок",
     ],
     "get_node_version": [
-        "report the installed Node.js release on this machine",
         "сообщи установленный релиз Node.js на этой машине",
     ],
     "get_python_version": [
-        "report the active Python interpreter version",
         "сообщи версию активного интерпретатора Python",
     ],
     "get_current_time": [
-        "report the local date and time on this machine",
         "сообщи локальные дату и время на этой машине",
     ],
     "get_disk_usage": [
-        "report free space for the home volume",
         "сообщи свободное место на домашнем разделе",
     ],
     FALLBACK_TOOL_NAME: [
-        "book a taxi to the airport",
-        "compose a short poem about rain",
         "закажи такси до аэропорта",
         "напиши короткое стихотворение о дожде",
     ],
@@ -79,10 +72,10 @@ def _schema_ok(arguments: dict[str, Any], tool: dict[str, Any]) -> bool:
 def _generic_holdout_requests(tool: dict[str, Any]) -> list[str]:
     display_name = str(tool.get("name") or "").replace("_", " ")
     tags = [str(tag).strip() for tag in tool.get("tags", []) if str(tag).strip()]
-    alias = next((tag for tag in tags if all(ord(char) < 128 for char in tag)), display_name)
+    alias = next((tag for tag in tags if any("а" <= char.lower() <= "я" or char.lower() == "ё" for char in tag)), display_name)
     return [
-        f"report {alias} for this machine",
-        f"please provide {display_name}",
+        f"покажи {alias}",
+        f"проверь {alias}",
     ]
 
 
@@ -94,40 +87,57 @@ def _holdout_requests_for_tool(tool: dict[str, Any]) -> list[str]:
     return _generic_holdout_requests(tool)
 
 
-def _common_tools(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _dataset_tools(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not records:
         return []
 
-    shared_names = {
-        str(tool.get("name") or "")
-        for tool in records[0].get("tools", [])
-        if str(tool.get("name") or "")
-    }
     tool_by_name: dict[str, dict[str, Any]] = {}
+    ordered_names: list[str] = []
     for record in records:
-        row_names = {
-            str(tool.get("name") or "")
-            for tool in record.get("tools", [])
-            if str(tool.get("name") or "")
+        target_names = {
+            str(call.get("name") or "")
+            for call in record.get("assistant", {}).get("tool_calls", [])
+            if isinstance(call, dict) and str(call.get("name") or "")
         }
-        shared_names &= row_names
+        if not target_names:
+            continue
         for tool in record.get("tools", []):
             name = str(tool.get("name") or "")
-            if name and name not in tool_by_name:
-                tool_by_name[name] = tool
-
-    ordered_names = [
-        str(tool.get("name") or "")
-        for tool in records[0].get("tools", [])
-        if str(tool.get("name") or "") in shared_names
-    ]
+            if not name or (name not in target_names and name != FALLBACK_TOOL_NAME) or name in tool_by_name:
+                continue
+            tool_by_name[name] = tool
+            ordered_names.append(name)
     return [tool_by_name[name] for name in ordered_names]
 
 
+def _representative_tools_by_target(records: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    representative: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        tool_calls = record.get("assistant", {}).get("tool_calls", [])
+        tools = [
+            tool
+            for tool in record.get("tools", [])
+            if str(tool.get("name") or "")
+        ]
+        if FALLBACK_TOOL_NAME not in representative and any(
+            str(tool.get("name") or "") == FALLBACK_TOOL_NAME for tool in tools
+        ):
+            representative[FALLBACK_TOOL_NAME] = tools
+        if not tool_calls:
+            continue
+        tool_name = str(tool_calls[0].get("name") or "")
+        if not tool_name or tool_name in representative:
+            continue
+        if any(str(tool.get("name") or "") == tool_name for tool in tools):
+            representative[tool_name] = tools
+    return representative
+
+
 def build_unique_holdout_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    tools = _common_tools(records)
+    tools = _dataset_tools(records)
     if not tools:
         return []
+    tools_by_target = _representative_tools_by_target(records)
 
     seen_users = {
         _normalize_user_text(str(record.get("user") or ""))
@@ -139,6 +149,7 @@ def build_unique_holdout_rows(records: list[dict[str, Any]]) -> list[dict[str, A
 
     for tool in tools:
         tool_name = str(tool.get("name") or "")
+        row_tools = tools_by_target.get(tool_name, tools)
         expected_arguments = _default_arguments(tool)
         for request in _holdout_requests_for_tool(tool):
             normalized_request = _normalize_user_text(request)
@@ -147,7 +158,7 @@ def build_unique_holdout_rows(records: list[dict[str, Any]]) -> list[dict[str, A
             used_users.add(normalized_request)
             rows.append(
                 {
-                    "tools": tools,
+                    "tools": row_tools,
                     "user": request,
                     "assistant": {
                         "tool_calls": [
@@ -238,6 +249,11 @@ def evaluate_holdout(
     for row in rows:
         expected_tool_name = row["assistant"]["tool_calls"][0]["name"]
         expected_text = serialize_assistant_payload(row["assistant"])
+        tool_by_name = {
+            str(tool.get("name") or ""): tool
+            for tool in row["tools"]
+            if str(tool.get("name") or "")
+        }
         if expected_tool_name == FALLBACK_TOOL_NAME:
             summary["eval_fallback_total"] += 1
         else:

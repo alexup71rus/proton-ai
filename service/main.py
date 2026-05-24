@@ -11,6 +11,7 @@ from protonx.schemas import TrainStartRequest
 from protonx.schemas import ToolRegistryRequest, ToolRegistryResponse
 from protonx.training.dataset_builder import build_synthetic_dataset
 from protonx.training.state import TRAINING_STATE
+from protonx.training.trainer import get_training_status
 from protonx.training.trainer import start_training_job
 from protonx.tools import validate_supported_schema_subset, validate_unique_tool_names
 
@@ -65,7 +66,7 @@ def train_dataset_build(payload: ToolRegistryRequest) -> dict:
 
 @app.get("/train/status")
 def train_status() -> dict:
-    return TRAINING_STATE.to_dict()
+    return get_training_status()
 
 
 @app.post("/train/start")
@@ -85,6 +86,8 @@ def train_start(payload: TrainStartRequest) -> dict:
             num_layers=payload.num_layers,
             num_heads=payload.num_heads,
             learning_rate=payload.learning_rate,
+            training_device=payload.training_device,
+            vocab_size=payload.vocab_size,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -1,5 +1,10 @@
+import json
+import os
 from dataclasses import MISSING, asdict, dataclass, field, fields
+from pathlib import Path
 from typing import Any
+
+from protonx.config import DATA_DIR
 
 
 def _field_default_value(state_field) -> Any:
@@ -32,6 +37,7 @@ class TrainingState:
     dataset_path: str | None = None
     dataset_sha1: str | None = None
     dataset_row_count: int = 0
+    process_id: int | None = None
     eval_total: int = 0
     eval_valid: int = 0
     eval_exact: int = 0
@@ -93,3 +99,31 @@ class TrainingState:
 
 
 TRAINING_STATE = TrainingState()
+
+
+def training_state_path() -> Path:
+    raw_path = os.getenv("PROTONX_TRAIN_STATE_PATH")
+    if raw_path:
+        return Path(raw_path).expanduser()
+    return DATA_DIR / "workspace" / "training_state.json"
+
+
+def write_training_state(state: TrainingState = TRAINING_STATE) -> dict:
+    payload = state.to_dict()
+    path = training_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return payload
+
+
+def read_training_state() -> dict:
+    path = training_state_path()
+    if not path.exists():
+        return TRAINING_STATE.to_dict()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return TRAINING_STATE.to_dict()
+    if not isinstance(payload, dict):
+        return TRAINING_STATE.to_dict()
+    return payload

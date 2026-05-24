@@ -1,8 +1,10 @@
 {
-  "target_rows": 1500,
+  "target_rows": 10000,
   "fallback_ratio": 0.3,
+  "languages": ["ru"],
   "punctuation": ["", "?", ".", "!"],
   "case_variants": ["as_is", "capitalize"],
+  "available_tools_per_row": [6, 10],
   "decoy_tools_per_row": 2,
   "decoy_tools": [
     {
@@ -62,6 +64,88 @@
       "tags": ["screenshot", "screen", "capture", "image", "скриншот", "экран"]
     }
   ],
+  "training_tools": [
+    {
+      "name": "docker_list_containers",
+      "tags": ["docker", "контейнеры", "список контейнеров", "docker ps", "запущенные контейнеры"]
+    },
+    {
+      "name": "docker_show_logs",
+      "tags": ["docker", "логи контейнера", "docker logs", "журнал контейнера", "посмотреть логи docker"]
+    },
+    {
+      "name": "docker_restart_container",
+      "tags": ["docker", "перезапуск контейнера", "рестарт контейнера", "restart container", "docker restart"]
+    },
+    {
+      "name": "docker_build_image",
+      "tags": ["docker", "сборка образа", "docker build", "образ docker", "build image"]
+    },
+    {
+      "name": "docker_compose_up",
+      "tags": ["docker compose", "compose up", "контейнеры compose", "compose контейнеры"]
+    },
+    {
+      "name": "docker_stop_container",
+      "tags": ["docker", "остановка контейнера", "stop container", "docker stop"]
+    },
+    {
+      "name": "docker_pull_image",
+      "tags": ["docker", "загрузка образа", "docker pull", "pull image"]
+    },
+    {
+      "name": "git_status",
+      "tags": ["git", "статус git", "git status", "состояние репозитория", "изменения git"]
+    },
+    {
+      "name": "git_diff",
+      "tags": ["git", "git diff", "diff", "покажи diff", "изменения в коде"]
+    },
+    {
+      "name": "git_log",
+      "tags": ["git", "git log", "история коммитов", "последние коммиты", "лог git"]
+    },
+    {
+      "name": "git_pull",
+      "tags": ["git", "git pull", "обнови репозиторий", "получи изменения", "подтяни изменения"]
+    },
+    {
+      "name": "git_branch",
+      "tags": ["git", "ветка git", "git branch", "текущая ветка", "список веток"]
+    },
+    {
+      "name": "git_checkout_branch",
+      "tags": ["git", "переключение ветки", "git checkout", "смена ветки"]
+    },
+    {
+      "name": "git_stash_changes",
+      "tags": ["git", "stash", "сохранение изменений", "git stash"]
+    },
+    {
+      "name": "list_home_files",
+      "tags": ["файлы дома", "домашняя папка", "список файлов", "home files", "покажи файлы"]
+    },
+    {
+      "name": "get_ip_address",
+      "tags": ["ip адрес", "сетевой адрес", "адрес сети", "ip", "network address"]
+    },
+    {
+      "name": "get_memory_usage",
+      "tags": ["память", "использование памяти", "ram", "оперативная память", "сколько памяти"]
+    },
+    {
+      "name": "get_cpu_usage",
+      "tags": ["cpu", "процессор", "нагрузка cpu", "использование процессора", "загрузка процессора"]
+    },
+    {
+      "name": "list_running_processes",
+      "tags": ["процессы", "запущенные процессы", "список процессов", "process list"]
+    },
+    {
+      "name": "get_os_info",
+      "tags": ["операционная система", "версия системы", "os info", "система"]
+    }
+  ],
   "templates": {
     "en": [
       "{phrase}",
@@ -80,14 +164,30 @@
       "проверь {phrase}",
       "выведи {phrase}",
       "отобрази {phrase}",
-      "какая {phrase}",
-      "какая {phrase} установлена",
-      "какая {phrase} у меня установлена",
-      "что за {phrase}",
       "можешь проверить {phrase}",
-      "скажи {phrase}"
+      "хочу увидеть {phrase}",
+      "покажи мне {phrase}",
+      "можешь показать {phrase}",
+      "подскажи {phrase}",
+      "посмотри {phrase}",
+      "проверь пожалуйста {phrase}",
+      "выведи пожалуйста {phrase}"
     ]
   },
+  "ru_request_wrappers": [
+    "{request}",
+    "{request} пожалуйста",
+    "мне нужно: {request}",
+    "сейчас {request}",
+    "быстро {request}",
+    "можешь выполнить: {request}",
+    "для проверки {request}",
+    "на этом компьютере {request}",
+    "в системе {request}",
+    "локально {request}",
+    "пожалуйста, {request}",
+    "а теперь {request}"
+  ],
   "tools": {
     "list_downloads": {
       "en": ["downloads", "downloads folder", "download folder", "downloaded files", "files in downloads"],
@@ -99,36 +199,226 @@
       "requests": [
         "покажи версию ноды",
         "какая версия ноды у меня установлена",
-        "какая нода установлена"
+        "какая нода установлена",
+        "узнай версию ноды",
+        "проверь node js",
+        "покажи node js",
+        "какой node установлен"
       ]
     },
     "get_python_version": {
       "en": ["python version", "python runtime", "interpreter version", "python installed version"],
       "ru": ["версия python", "версия питона", "питон", "интерпретатор", "какой python"],
       "requests": [
-        "python version",
-        "check python version",
         "какая версия python у меня установлена",
-        "покажи версию питона"
+        "покажи версию питона",
+        "узнай версию питона",
+        "проверь python",
+        "какой питон установлен",
+        "покажи интерпретатор python"
       ]
     },
     "get_current_time": {
       "en": ["current time", "time", "date", "clock", "time now"],
       "ru": ["время", "текущее время", "дата", "который час", "сколько времени"],
       "requests": [
-        "what time is it",
-        "show current time",
         "который час",
-        "сколько времени"
+        "сколько времени",
+        "покажи текущее время",
+        "какая сейчас дата",
+        "скажи дату и время",
+        "узнай время на компьютере"
       ]
     },
     "get_disk_usage": {
       "en": ["disk usage", "disk space", "free space", "storage", "free disk space"],
       "ru": ["диск", "место на диске", "свободное место", "размер диска", "сколько места"],
       "requests": [
-        "check disk space",
-        "show disk space",
-        "размер диска"
+        "размер диска",
+        "проверь место на диске",
+        "покажи свободное место",
+        "сколько свободного места на диске",
+        "узнай состояние диска"
+      ]
+    },
+    "docker_list_containers": {
+      "ru": ["контейнеры docker", "список контейнеров", "запущенные контейнеры", "docker ps", "контейнеры"],
+      "requests": [
+        "покажи контейнеры docker",
+        "какие контейнеры запущены",
+        "выведи docker ps",
+        "список контейнеров docker"
+      ]
+    },
+    "docker_show_logs": {
+      "ru": ["логи docker", "логи контейнера", "журнал контейнера", "docker logs"],
+      "requests": [
+        "покажи логи контейнера",
+        "выведи docker logs",
+        "посмотри журнал контейнера",
+        "нужны логи docker"
+      ]
+    },
+    "docker_restart_container": {
+      "ru": ["перезапуск контейнера", "рестарт контейнера", "docker restart", "рестарт docker"],
+      "requests": [
+        "перезапусти контейнер docker",
+        "сделай docker restart",
+        "нужно перезапустить контейнер",
+        "рестартани контейнер"
+      ]
+    },
+    "docker_build_image": {
+      "ru": ["сборка docker образа", "docker build", "образ docker", "сборка образа"],
+      "requests": [
+        "собери docker образ",
+        "запусти docker build",
+        "нужно собрать образ docker",
+        "построй образ контейнера"
+      ]
+    },
+    "docker_compose_up": {
+      "ru": ["docker compose", "compose up", "compose контейнеры", "контейнеры compose"],
+      "requests": [
+        "подними docker compose",
+        "запусти compose up",
+        "нужно поднять контейнеры compose",
+        "стартуй docker compose"
+      ]
+    },
+    "docker_stop_container": {
+      "ru": ["остановка контейнера", "docker stop", "остановить контейнер", "stop container"],
+      "requests": [
+        "останови контейнер docker",
+        "сделай docker stop",
+        "нужно остановить контейнер",
+        "останови docker контейнер"
+      ]
+    },
+    "docker_pull_image": {
+      "ru": ["загрузка docker образа", "docker pull", "скачать образ", "pull image"],
+      "requests": [
+        "скачай docker образ",
+        "выполни docker pull",
+        "нужно загрузить образ docker",
+        "получи образ контейнера"
+      ]
+    },
+    "git_status": {
+      "ru": ["статус git", "состояние репозитория", "git status", "изменения git"],
+      "requests": [
+        "покажи статус git",
+        "какой статус репозитория",
+        "выведи git status",
+        "проверь изменения git"
+      ]
+    },
+    "git_diff": {
+      "ru": ["git diff", "diff", "изменения в коде", "разница файлов"],
+      "requests": [
+        "покажи git diff",
+        "какие изменения в коде",
+        "выведи diff",
+        "посмотри разницу файлов"
+      ]
+    },
+    "git_log": {
+      "ru": ["git log", "история коммитов", "последние коммиты", "лог git"],
+      "requests": [
+        "покажи git log",
+        "покажи последние коммиты",
+        "какая история коммитов",
+        "выведи лог git"
+      ]
+    },
+    "git_pull": {
+      "ru": ["git pull", "обнови репозиторий", "подтяни изменения", "получи изменения"],
+      "requests": [
+        "сделай git pull",
+        "обнови репозиторий",
+        "подтяни изменения из git",
+        "получи последние изменения"
+      ]
+    },
+    "git_branch": {
+      "ru": ["ветка git", "git branch", "текущая ветка", "список веток"],
+      "requests": [
+        "покажи ветку git",
+        "какая текущая ветка",
+        "выведи git branch",
+        "список веток git"
+      ]
+    },
+    "git_checkout_branch": {
+      "ru": ["переключение ветки", "git checkout", "смена ветки", "checkout branch"],
+      "requests": [
+        "переключи ветку git",
+        "сделай git checkout",
+        "нужно сменить ветку",
+        "перейди на другую ветку"
+      ]
+    },
+    "git_stash_changes": {
+      "ru": ["git stash", "stash", "сохранение изменений", "спрятать изменения"],
+      "requests": [
+        "сделай git stash",
+        "спрячь текущие изменения",
+        "сохрани изменения в stash",
+        "убери изменения во временное хранилище"
+      ]
+    },
+    "list_home_files": {
+      "ru": ["домашняя папка", "файлы дома", "список файлов", "что в домашней папке"],
+      "requests": [
+        "покажи файлы в домашней папке",
+        "что лежит дома",
+        "список файлов дома",
+        "выведи домашнюю папку"
+      ]
+    },
+    "get_ip_address": {
+      "ru": ["ip адрес", "сетевой адрес", "адрес сети", "мой ip"],
+      "requests": [
+        "покажи ip адрес",
+        "какой сетевой адрес",
+        "узнай мой ip",
+        "выведи ip"
+      ]
+    },
+    "get_memory_usage": {
+      "ru": ["память", "оперативная память", "использование памяти", "сколько памяти"],
+      "requests": [
+        "покажи использование памяти",
+        "сколько оперативной памяти занято",
+        "проверь память",
+        "выведи состояние памяти"
+      ]
+    },
+    "get_cpu_usage": {
+      "ru": ["cpu", "процессор", "нагрузка процессора", "загрузка cpu"],
+      "requests": [
+        "покажи нагрузку cpu",
+        "сколько загружен процессор",
+        "проверь процессор",
+        "выведи загрузку cpu"
+      ]
+    },
+    "list_running_processes": {
+      "ru": ["процессы", "запущенные процессы", "список процессов", "активные процессы"],
+      "requests": [
+        "покажи запущенные процессы",
+        "выведи список процессов",
+        "какие процессы сейчас работают",
+        "проверь активные процессы"
+      ]
+    },
+    "get_os_info": {
+      "ru": ["операционная система", "версия системы", "информация о системе", "какая система"],
+      "requests": [
+        "покажи информацию о системе",
+        "какая операционная система",
+        "узнай версию системы",
+        "выведи сведения об os"
       ]
     }
   },

@@ -67,31 +67,40 @@ Proton-X v1 сейчас должен быть маленькой generative too
 model_path: data/weights/proton_router_v1.pt
 tokenizer_path: data/tokenizers/proton_router_v1.model
 output_format: json-v1
+dataset: 10000 RU-only rows
+classes: 26
+unique user texts: 10000
+available tools per row: 7-13
 hidden_dim: 256
 num_layers: 4
 num_heads: 8
-vocab_size: 512
-max_seq_len: 319
-best_epoch: 10
-best_epoch_loss: 0.03868323729987791
-dataset_row_count: 1500
+vocab_size: 2048
+max_seq_len: 328
+epochs: 3
+batch_size: 8
+learning_rate: 0.0005
+best_epoch: 3
+best_epoch_loss: 0.004781698519224301
+training best_loss metric: 0.0001376800937578082
 ```
 
 Короткий unique holdout eval текущего `proton_router_v1`:
 
 ```text
-eval_total: 14
-eval_valid: 14
-eval_exact: 2
-eval_positive_total: 10
-eval_positive_exact: 2
-eval_fallback_total: 4
-eval_fallback_exact: 0
+eval_total: 42
+eval_valid: 41
+eval_exact: 40
+eval_positive_total: 40
+eval_positive_exact: 39
+eval_fallback_total: 2
+eval_fallback_exact: 1
 invalid_json: 0
 invalid_shape: 0
-unknown_tool: 0
+unknown_tool: 1
 schema_error: 0
 ```
+
+Состояние принято как сильная рабочая зона, но не финальная гарантия: JSON валидный на holdout, точность около 95%, остаётся один `unknown_tool` и один fallback miss. Не судить качество только по loss, обязательно смотреть short unique holdout, smoke и raw debug outputs.
 
 Параметры fresh run, от которых стоит стартовать:
 
@@ -99,15 +108,13 @@ schema_error: 0
 hidden_dim: 256
 num_layers: 4
 num_heads: 8
-batch_size: 16
+batch_size: 8
 learning_rate: 0.0005
-epochs: 10
-vocab_size: 512
+epochs: 3
+vocab_size: 2048
 target/output_format: json-v1
 runtime: raw greedy JSON generation, no repair
 ```
-
-Качество пока не принято как финальное: holdout `2/14` слабый. Но это честная generative JSON baseline. Следующий прирост надо искать в данных, prompt format, tokenization/model capacity и обучающем flow, не в repair/scoring.
 
 ## Команда fresh training
 
@@ -116,7 +123,7 @@ runtime: raw greedy JSON generation, no repair
 ```bash
 curl -sS -X POST http://127.0.0.1:8000/train/start \
   -H 'Content-Type: application/json' \
-  -d '{"dataset_path":"/Users/aleksandr/Documents/Projects/proton-x/data/train/routing/routing.jsonl","epochs":10,"batch_size":16,"model_name":"tiny-router","tokenizer_name":"sentencepiece-bpe","output_root_dir":"/Users/aleksandr/Documents/Projects/proton-x/data","artifact_name":"proton_router_v1","resume_model_path":null,"resume_tokenizer_path":null,"hidden_dim":256,"num_layers":4,"num_heads":8,"learning_rate":0.0005}'
+  -d '{"dataset_path":"data/train/routing/routing.jsonl","epochs":3,"batch_size":8,"model_name":"tiny-router","tokenizer_name":"sentencepiece-bpe","output_root_dir":"data","artifact_name":"proton_router_v1","resume_model_path":null,"resume_tokenizer_path":null,"hidden_dim":256,"num_layers":4,"num_heads":8,"learning_rate":0.0005,"vocab_size":2048,"training_device":"mps"}'
 ```
 
 После training проверь, что [data/workspace/settings.json](../data/workspace/settings.json) содержит относительные пути:
@@ -163,28 +170,31 @@ cd /Users/aleksandr/Documents/Projects/proton-x
 Текущий dataset:
 
 - Файл: [data/train/routing/routing.jsonl](../data/train/routing/routing.jsonl)
-- Размер: 1500 rows
+- Размер: 10000 rows
+- Классы: 26, включая `__fallback__`
 - Формат строки: `tools`, `user`, `assistant`
 - `assistant` содержит целевой JSON `tool_calls`
 - Training loss считается только на assistant continuation; prompt tokens masked через `IGNORE_INDEX`
+- Все `user` тексты в текущем dataset RU-only.
+- В каждой строке свой subset registry: target tool плюс разные decoy tools и fallback.
 
 Распределение классов на момент handoff:
 
 ```text
-list_downloads: 237
-get_node_version: 236
-get_python_version: 236
-get_current_time: 236
-get_disk_usage: 236
-__fallback__: 319
+__fallback__: 865
+остальные target classes: 365-366 rows на класс
 ```
 
 Распределение количества tools в prompt:
 
 ```text
-6 tools: 515 rows
-7 tools: 495 rows
-8 tools: 490 rows
+7 tools: 708 rows
+8 tools: 1283 rows
+9 tools: 2009 rows
+10 tools: 1997 rows
+11 tools: 1980 rows
+12 tools: 1345 rows
+13 tools: 678 rows
 ```
 
 Seed/mixer:
@@ -200,7 +210,7 @@ PYTHONPATH=service /usr/local/Cellar/python@3.11/3.11.13/bin/python3.11 \
   -m protonx.training.bootstrap_dataset_mixer_for_tools \
   --tools data/tools/tools.json \
   --output data/train/routing/routing.jsonl \
-  --target-rows 1500
+  --target-rows 10000
 ```
 
 ## Почему старый eval убрали из critical path
@@ -294,7 +304,7 @@ PY
 hidden_dim: 256
 num_layers: 4
 num_heads: 8
-vocab_size: 512
+vocab_size: 2048
 output_format: json-v1
 evaluation.mode: unique_holdout
 ```
@@ -303,10 +313,10 @@ evaluation.mode: unique_holdout
 
 1. Улучшать generative JSON, а не скрывать его ошибки runtime-слоем.
 2. Проверить, хватает ли текущего prompt contract для аргументов и будущих chain calls.
-3. Усилить dataset hard negatives для fallback: jokes, poems, open browser, how are you, общие вопросы без tool.
-4. Усилить positives/negatives для `get_current_time` vs `get_disk_usage` vs `get_python_version`.
-5. Проверить, не мешает ли SentencePiece vocab 512 для устойчивого JSON; если мешает, пробовать больший vocab или character/BPE стратегию.
-6. Если параметры крутить, стартовать от рабочей зоны `256/4/8`, batch 16, lr 0.0005, epochs 10.
+3. Усилить dataset hard negatives для fallback и убрать оставшийся `unknown_tool` на eval.
+4. Усилить близкие positives/negatives по семействам Docker/Git/System, где tool names похожи по смыслу.
+5. Если параметры крутить, стартовать от рабочей зоны `256/4/8`, batch 8, lr 0.0005, epochs 3, vocab 2048.
+6. Эпохи повышать только если eval/smoke показывают недообучение; низкий loss сам по себе не причина продолжать.
 7. Не принимать качество только по loss: смотреть short unique holdout, smoke и raw debug outputs.
 
 ## Не повторять

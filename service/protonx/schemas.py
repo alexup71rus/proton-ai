@@ -72,3 +72,5 @@ class TrainStartRequest(BaseModel):
     num_layers: int = 2
     num_heads: int = 4
     learning_rate: float = 1e-3
+    training_device: Literal["cpu", "mps", "auto"] | None = None
+    vocab_size: int = 512

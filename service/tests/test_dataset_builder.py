@@ -13,7 +13,7 @@ def test_build_synthetic_dataset_creates_jsonl_rows(tmp_path: Path):
         ToolDefinition(
             name="light",
             description="Light control",
-            tags=["light", "lamp"],
+            tags=["light", "lamp", "свет", "лампа"],
             arguments_schema=JsonSchema(
                 type="object",
                 properties={"state": {"type": "string", "enum": ["on", "off"]}},
@@ -23,7 +23,7 @@ def test_build_synthetic_dataset_creates_jsonl_rows(tmp_path: Path):
         ToolDefinition(
             name="window",
             description="Window control",
-            tags=["window", "close"],
+            tags=["window", "close", "окно", "открыть"],
             arguments_schema=JsonSchema(
                 type="object",
                 properties={"state": {"type": "string", "enum": ["open", "close"]}},
@@ -32,7 +32,7 @@ def test_build_synthetic_dataset_creates_jsonl_rows(tmp_path: Path):
         ),
     ]
     output_path = tmp_path / "routing.jsonl"
-    rows_written = build_synthetic_dataset(tools=tools, output_path=output_path)
+    rows_written = build_synthetic_dataset(tools=tools, output_path=output_path, target_rows=300)
     assert rows_written > 0
     assert output_path.exists()
     rows = [
@@ -81,10 +81,11 @@ def test_build_examples_can_generate_large_mixed_dataset_from_seed():
         for row in rows
     )
     assert fallback_count >= 70
-    assert any(user == "Какая версия ноды у меня установлена?" for user in users)
-    assert any(user == "Покажи версию ноды?" for user in users)
+    assert any("версия ноды" in user.lower() and "установлена" in user.lower() for user in users)
+    assert any("покажи версию ноды" in user.lower() for user in users)
     assert any(user == "какая версия установлена" for user in users)
-    assert any(user.startswith("Check disk space") for user in users)
+    assert all(any("а" <= char.lower() <= "я" or char.lower() == "ё" for char in user) for user in users)
+    assert not any(user.startswith("Check disk space") for user in users)
     assert any(
         row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
         for row in rows
@@ -96,7 +97,7 @@ def test_build_examples_use_schema_valid_arguments_and_vary_tool_position():
         ToolDefinition(
             name="light",
             description="Light control",
-            tags=["light", "lamp"],
+            tags=["light", "lamp", "свет", "лампа"],
             arguments_schema=JsonSchema(
                 type="object",
                 properties={"state": {"type": "string", "enum": ["on", "off"]}},
@@ -106,7 +107,7 @@ def test_build_examples_use_schema_valid_arguments_and_vary_tool_position():
         ToolDefinition(
             name="window",
             description="Window control",
-            tags=["window", "close"],
+            tags=["window", "close", "окно", "открыть"],
             arguments_schema=JsonSchema(
                 type="object",
                 properties={"state": {"type": "string", "enum": ["open", "close"]}},
@@ -115,7 +116,7 @@ def test_build_examples_use_schema_valid_arguments_and_vary_tool_position():
         ),
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=300)
     tool_rows = []
     for row in rows:
         assistant = row["assistant"]
@@ -151,7 +152,7 @@ def test_build_examples_use_empty_arguments_for_zero_argument_tools_and_more_pro
         ),
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=0)
     tool_rows = []
     for row in rows:
         assistant = row["assistant"]
@@ -163,9 +164,91 @@ def test_build_examples_use_empty_arguments_for_zero_argument_tools_and_more_pro
 
     assert len(tool_rows) >= 8
     assert all(assistant["tool_calls"][0]["arguments"] == {} for row, assistant in tool_rows)
-    assert any(row["user"] == "show me downloads" for row, assistant in tool_rows)
+    assert not any(row["user"] == "show me downloads" for row, assistant in tool_rows)
+    assert any(row["user"] == "покажи загрузки" for row, assistant in tool_rows)
     assert any(row["user"] == "покажи версию ноды" for row, assistant in tool_rows)
     assert any(row["user"].startswith("какая версия ноды") for row, assistant in tool_rows)
+
+
+def test_build_examples_can_generate_7000_ru_only_rows_from_seed():
+    tools = [
+        ToolDefinition(
+            name="list_downloads",
+            description="Downloads",
+            tags=["downloads", "папка загрузок", "загрузки", "скачанные файлы"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        ),
+        ToolDefinition(
+            name="get_node_version",
+            description="Node version",
+            tags=["node version", "версия node", "версия ноды", "нода"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        ),
+        ToolDefinition(
+            name="get_python_version",
+            description="Python version",
+            tags=["python version", "версия python", "версия питона", "питон"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        ),
+        ToolDefinition(
+            name="get_current_time",
+            description="Time",
+            tags=["current time", "текущее время", "который час", "дата"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        ),
+        ToolDefinition(
+            name="get_disk_usage",
+            description="Disk usage",
+            tags=["disk space", "место на диске", "свободное место", "диск"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        ),
+    ]
+
+    rows = build_examples(tools, target_rows=7000)
+    users = [row["user"] for row in rows]
+    class_counts: dict[str, int] = {}
+    for row in rows:
+        tool_name = row["assistant"]["tool_calls"][0]["name"]
+        class_counts[tool_name] = class_counts.get(tool_name, 0) + 1
+
+    assert len(rows) == 7000
+    assert len(set(users)) == 7000
+    assert all(any("а" <= char.lower() <= "я" or char.lower() == "ё" for char in user) for user in users)
+    assert class_counts["get_node_version"] >= 300
+    assert class_counts["get_python_version"] >= 300
+    assert class_counts["get_current_time"] >= 300
+    assert class_counts["get_disk_usage"] >= 300
+    assert class_counts["list_downloads"] >= 300
+
+
+def test_build_examples_include_seed_training_tools_as_target_classes():
+    tools = [
+        ToolDefinition(
+            name="get_node_version",
+            description="Node version",
+            tags=["версия node"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        )
+    ]
+
+    rows = build_examples(tools, target_rows=1500)
+    target_names = {
+        row["assistant"]["tool_calls"][0]["name"]
+        for row in rows
+    }
+    docker_rows = [
+        row for row in rows
+        if row["assistant"]["tool_calls"][0]["name"] == "docker_list_containers"
+    ]
+    git_rows = [
+        row for row in rows
+        if row["assistant"]["tool_calls"][0]["name"] == "git_status"
+    ]
+
+    assert "docker_list_containers" in target_names
+    assert "git_status" in target_names
+    assert any("контейнер" in row["user"].lower() for row in docker_rows)
+    assert any("статус git" in row["user"].lower() for row in git_rows)
 
 
 def test_build_examples_support_single_tool_registry():
@@ -178,7 +261,7 @@ def test_build_examples_support_single_tool_registry():
         )
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=300)
     tool_rows = [
         row
         for row in rows
@@ -214,7 +297,7 @@ def test_runtime_prompt_uses_same_compact_tools_contract_as_training_examples():
         ),
     ]
 
-    training_example = build_examples(tools)[0]
+    training_example = build_examples(tools, target_rows=300)[0]
     runtime_prompt = build_routing_prompt(
         user_text="turn on the lamp",
         tools=with_fallback_tool(tools),
@@ -271,16 +354,15 @@ def test_build_examples_include_unknown_and_ambiguous_fallback_rows():
         ),
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=300)
     fallback_rows = [
         row
         for row in rows
         if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
     ]
-    assert any(row["user"] == "how are you" for row in fallback_rows)
     assert any(row["user"] == "как дела" for row in fallback_rows)
-    assert any(row["user"] == "tell me a joke" for row in fallback_rows)
-    assert any(row["user"] == "change it" for row in fallback_rows)
+    assert any(row["user"] == "расскажи шутку" for row in fallback_rows)
+    assert any(row["user"] == "измени это" for row in fallback_rows)
     assert all(row["assistant"]["tool_calls"][0]["arguments"] == {} for row in fallback_rows)
 
 
@@ -289,27 +371,26 @@ def test_build_examples_include_version_hard_negative_when_multiple_version_tool
         ToolDefinition(
             name="get_node_version",
             description="Node version",
-            tags=["node", "node version", "version"],
+            tags=["node", "node version", "version", "версия node"],
             arguments_schema=JsonSchema(type="object", properties={}, required=[]),
         ),
         ToolDefinition(
             name="get_python_version",
             description="Python version",
-            tags=["python", "python version", "version"],
+            tags=["python", "python version", "version", "версия python"],
             arguments_schema=JsonSchema(type="object", properties={}, required=[]),
         ),
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=300)
     fallback_rows = {
         row["user"]: row
         for row in rows
         if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
     }
 
-    assert "show me version" in fallback_rows
     assert "покажи версию" in fallback_rows
-    assert fallback_rows["show me version"]["assistant"]["tool_calls"] == [
+    assert fallback_rows["покажи версию"]["assistant"]["tool_calls"] == [
         {"name": FALLBACK_TOOL_NAME, "arguments": {}}
     ]
 
@@ -319,39 +400,37 @@ def test_build_examples_include_ambiguous_hard_negatives_for_overlapping_control
         ToolDefinition(
             name="light",
             description="Light control",
-            tags=["light", "brightness"],
+            tags=["light", "brightness", "свет", "яркость"],
             arguments_schema=JsonSchema(type="object", properties={}, required=[]),
         ),
         ToolDefinition(
             name="window",
             description="Window control",
-            tags=["window", "open", "close"],
+            tags=["window", "open", "close", "окно", "открыть"],
             arguments_schema=JsonSchema(type="object", properties={}, required=[]),
         ),
         ToolDefinition(
             name="speaker",
             description="Speaker control",
-            tags=["speaker", "volume", "sound"],
+            tags=["speaker", "volume", "sound", "колонка", "громкость"],
             arguments_schema=JsonSchema(type="object", properties={}, required=[]),
         ),
         ToolDefinition(
             name="file_search",
             description="File search",
-            tags=["file", "search", "open"],
+            tags=["file", "search", "open", "файл", "поиск"],
             arguments_schema=JsonSchema(type="object", properties={}, required=[]),
         ),
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=300)
     fallback_rows = {
         row["user"]: row
         for row in rows
         if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
     }
 
-    assert "make it quieter" in fallback_rows
     assert "сделай потише" in fallback_rows
-    assert "open" in fallback_rows
     assert "открой" in fallback_rows
 
 
@@ -360,7 +439,7 @@ def test_build_examples_include_argument_probe_rows():
         ToolDefinition(
             name="search_files",
             description="Search files",
-            tags=["find file", "search file"],
+            tags=["find file", "search file", "найти файл"],
             arguments_schema=JsonSchema(
                 type="object",
                 properties={"query": {"type": "string"}},
@@ -370,7 +449,7 @@ def test_build_examples_include_argument_probe_rows():
         ToolDefinition(
             name="search_web",
             description="Search web",
-            tags=["search", "google"],
+            tags=["search", "google", "поиск"],
             arguments_schema=JsonSchema(
                 type="object",
                 properties={"q": {"type": "string"}},
@@ -379,15 +458,13 @@ def test_build_examples_include_argument_probe_rows():
         ),
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=0)
     rows_by_user = {row["user"]: row for row in rows}
 
     assert rows_by_user["найди package.json"]["assistant"]["tool_calls"][0]["arguments"] == {
         "query": "package.json"
     }
-    assert rows_by_user["find node js latest version"]["assistant"]["tool_calls"][0]["arguments"] == {
-        "q": "node js latest version"
-    }
+    assert "find node js latest version" not in rows_by_user
 
 
 def test_build_examples_skip_argument_probe_rows_when_tools_are_missing_from_registry():
@@ -400,7 +477,7 @@ def test_build_examples_skip_argument_probe_rows_when_tools_are_missing_from_reg
         )
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=300)
     users = {row["user"] for row in rows}
 
     assert "найди package.json" not in users
@@ -424,7 +501,7 @@ def test_build_examples_vary_tag_order_across_rows_for_same_tool():
         ),
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=300)
     list_downloads_tag_orders = {
         tuple(tool["tags"])
         for row in rows
@@ -451,7 +528,7 @@ def test_build_examples_interleave_fallback_rows_into_dataset():
         ),
     ]
 
-    rows = build_examples(tools)
+    rows = build_examples(tools, target_rows=300)
     first_fallback_index = next(
         index
         for index, row in enumerate(rows)

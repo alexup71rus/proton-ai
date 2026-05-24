@@ -14,8 +14,10 @@ class TinyRouterConfig:
 
 
 def build_causal_mask(seq_len: int, device: torch.device) -> torch.Tensor:
-    mask = torch.full((seq_len, seq_len), float("-inf"), device=device)
-    return torch.triu(mask, diagonal=1)
+    return torch.triu(
+        torch.ones((seq_len, seq_len), dtype=torch.bool, device=device),
+        diagonal=1,
+    )
 
 
 class TinyRouterBlock(nn.Module):

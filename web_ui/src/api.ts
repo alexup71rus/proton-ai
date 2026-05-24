@@ -261,8 +261,16 @@ export interface LogsResponse {
   rows: LogRow[];
 }
 
+const inflightGetRequests = new Map<string, Promise<unknown>>();
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+
+function isDedupableGet(path: string, init?: RequestInit): boolean {
+  const method = init?.method?.toUpperCase() ?? "GET";
+  return method === "GET" && !init?.body && !init?.headers && path.startsWith("/api/");
+}
+
+
+async function executeRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
@@ -292,6 +300,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (isDedupableGet(path, init)) {
+    const cached = inflightGetRequests.get(path);
+    if (cached) {
+      return cached as Promise<T>;
+    }
+    const pending = executeRequest<T>(path, init).finally(() => {
+      inflightGetRequests.delete(path);
+    });
+    inflightGetRequests.set(path, pending);
+    return pending;
+  }
+
+  return executeRequest<T>(path, init);
 }
 
 

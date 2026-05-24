@@ -14,12 +14,12 @@
   },
   "training": {
     "dataset_name": "routing.jsonl",
-    "epochs": 10,
-    "batch_size": 16,
+    "epochs": 3,
+    "batch_size": 8,
     "learning_rate": 0.0005
   },
   "test": {
-    "user_text": "time",
+    "user_text": "покажи версию питона",
     "show_debug": true
   }
 }

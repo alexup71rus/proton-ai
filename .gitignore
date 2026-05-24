@@ -5,6 +5,7 @@ data/models/*
 data/tokenizers/*
 data/tools/*
 data/.gitkeep
+data/workspace/training_*.json
 !data/train/.gitkeep
 !data/weights/.gitkeep
 !data/models/.gitkeep
