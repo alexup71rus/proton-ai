@@ -1,6 +1,7 @@
 import pytest
 
 from protonx.training.trainer import IGNORE_INDEX, _batch_records
+from protonx.training.format import serialize_assistant_payload
 
 
 def test_batch_records_masks_prompt_targets_and_pad_positions():
@@ -32,3 +33,22 @@ def test_batch_records_rejects_silent_truncation():
             pad_id=0,
             eos_id=2,
         )
+
+
+def test_serialize_assistant_payload_keeps_only_tool_calls_and_name_first():
+    serialized = serialize_assistant_payload(
+        {
+            "tool_calls": [
+                {
+                    "name": "list_downloads",
+                    "arguments": {},
+                    "answer": False,
+                }
+            ],
+            "answer": False,
+            "fallback": False,
+            "response": "ignored",
+        }
+    )
+
+    assert serialized == '{"tool_calls":[{"name":"list_downloads","arguments":{}}]}'

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +75,7 @@ def _build_summary(path: Path, content: str) -> dict[str, Any]:
         "name": path.name,
         "size_bytes": stat.st_size,
         "updated_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+        "sha1": hashlib.sha1(content.encode("utf-8")).hexdigest(),
         "row_count": validation["row_count"],
         "validation_status": validation["status"],
         "issue_count": validation["issue_count"],

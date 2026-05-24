@@ -19,5 +19,9 @@ def get_log_file() -> Path:
     return Path(os.getenv("PROTONX_ROUTER_LOG_FILE", ROOT_DIR / "data" / "logs" / "router.jsonl"))
 
 
+def get_workspace_settings_file() -> Path:
+    return Path(os.getenv("PROTONX_WORKSPACE_FILE", ROOT_DIR / "data" / "workspace" / "settings.json"))
+
+
 def get_service_base_url() -> str:
     return os.getenv("PROTONX_SERVICE_URL", "http://127.0.0.1:8000").rstrip("/")

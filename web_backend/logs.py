@@ -6,6 +6,7 @@ from typing import Any
 
 from web_backend.config import get_log_file
 from web_backend.dataset_validation import build_dataset_fallback_payload
+from web_backend.dataset_validation import with_dataset_fallback_tool
 
 
 def _load_raw_logs(limit: int = 100) -> list[dict[str, Any]]:
@@ -69,9 +70,9 @@ def export_failed_cases_as_dataset(tools_registry: list[dict[str, Any]], limit: 
         ]
         dataset_rows.append(
             {
-                "tools": candidate_tools,
+                "tools": with_dataset_fallback_tool(candidate_tools),
                 "user": user_text,
-                "assistant": build_dataset_fallback_payload(True),
+                "assistant": build_dataset_fallback_payload(),
             }
         )
     return dataset_rows

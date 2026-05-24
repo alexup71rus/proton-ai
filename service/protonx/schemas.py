@@ -31,6 +31,8 @@ class RoutePreviewRequest(BaseModel):
     answer_allowed: bool = True
     max_candidates: int = 3
     strict_mode: bool = True
+    model_path: str | None = None
+    tokenizer_path: str | None = None
 
 
 class RoutePreviewResponse(BaseModel):
@@ -55,6 +57,8 @@ class ChatCompletionsRequest(BaseModel):
     tools: list[ToolDefinition]
     tool_choice: str = "auto"
     answer_allowed: bool = True
+    model_path: str | None = None
+    tokenizer_path: str | None = None
 
 
 class TrainStartRequest(BaseModel):
@@ -63,3 +67,10 @@ class TrainStartRequest(BaseModel):
     batch_size: int = 1
     model_name: str = "tiny-router"
     tokenizer_name: str = "sentencepiece-bpe"
+    output_root_dir: str = "data"
+    artifact_name: str = "tiny_router_v1"
+    resume_model_path: str | None = None
+    resume_tokenizer_path: str | None = None
+    hidden_dim: int = 64
+    num_layers: int = 2
+    num_heads: int = 4

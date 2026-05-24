@@ -227,27 +227,20 @@ def validate_training_dataset_content(content: str, max_issues: int = 25) -> dic
         if not isinstance(assistant.get("tool_calls"), list):
             add_issue(line_number, "Assistant payload must include tool_calls list.")
             continue
-        if not isinstance(assistant.get("answer"), bool):
-            add_issue(line_number, "Assistant payload must include boolean answer.")
-            continue
-
-        if assistant.get("fallback") is True:
-            if assistant["tool_calls"] != []:
-                add_issue(line_number, "Fallback payload cannot include tool calls.")
-            if assistant["answer"] is not True:
-                add_issue(line_number, "Fallback payload must set answer=true.")
-            continue
-
-        if assistant["answer"] is True:
-            add_issue(line_number, "answer-only responses must use fallback.")
+        if set(assistant.keys()) != {"tool_calls"}:
+            add_issue(line_number, "Assistant payload may only contain tool_calls.")
             continue
         if assistant["tool_calls"] == []:
-            add_issue(line_number, "empty tool_calls must use fallback.")
+            add_issue(line_number, "Assistant payload must select a tool or the fallback tool.")
             continue
 
+        saw_fallback = False
         for call in assistant["tool_calls"]:
             if not isinstance(call, dict) or "name" not in call:
                 add_issue(line_number, "Each tool call must be an object with name.")
+                continue
+            if set(call.keys()) - {"name", "arguments"}:
+                add_issue(line_number, "Tool call may only contain name and arguments.")
                 continue
             tool_name = call["name"]
             if tool_name not in tool_map:
@@ -259,6 +252,11 @@ def validate_training_dataset_content(content: str, max_issues: int = 25) -> dic
                 continue
             if not _schema_ok(arguments, tool_map[tool_name]):
                 add_issue(line_number, f"Tool call {tool_name} arguments do not match schema.")
+            if tool_name == "__fallback__":
+                saw_fallback = True
+
+        if saw_fallback and len(assistant["tool_calls"]) != 1:
+            add_issue(line_number, "Fallback tool cannot be combined with other tool calls.")
 
     if row_count == 0:
         add_issue(0, "Dataset must contain at least one JSONL row.")

@@ -52,9 +52,11 @@ def chat_completions(payload: ChatCompletionsRequest) -> dict:
             user_text=user_text,
             tools=payload.tools,
             answer_allowed=payload.answer_allowed,
+            model_path=payload.model_path,
+            tokenizer_path=payload.tokenizer_path,
         )
     )
-    return to_openai_tool_calls(decision.final_output)
+    return to_openai_tool_calls(decision.final_output, answer_allowed=payload.answer_allowed)
 
 
 @app.post("/train/dataset/build")
@@ -78,6 +80,13 @@ def train_start(payload: TrainStartRequest) -> dict:
             batch_size=payload.batch_size,
             model_name=payload.model_name,
             tokenizer_name=payload.tokenizer_name,
+            output_root_dir=payload.output_root_dir,
+            artifact_name=payload.artifact_name,
+            resume_model_path=payload.resume_model_path,
+            resume_tokenizer_path=payload.resume_tokenizer_path,
+            hidden_dim=payload.hidden_dim,
+            num_layers=payload.num_layers,
+            num_heads=payload.num_heads,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

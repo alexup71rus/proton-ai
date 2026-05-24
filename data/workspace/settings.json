@@ -1,0 +1,25 @@
+{
+  "selected_model": {
+    "mode": "new",
+    "label": "custom_router",
+    "model_name": "tiny-router",
+    "tokenizer_name": "sentencepiece-bpe",
+    "output_root_dir": "data",
+    "artifact_name": "custom_router",
+    "model_path": null,
+    "tokenizer_path": null,
+    "hidden_dim": 32,
+    "num_layers": 1,
+    "num_heads": 4
+  },
+  "training": {
+    "dataset_name": "routing.jsonl",
+    "epochs": 2,
+    "batch_size": 4
+  },
+  "test": {
+    "user_text": "сделай свет потеплее",
+    "answer_allowed": false,
+    "show_debug": false
+  }
+}

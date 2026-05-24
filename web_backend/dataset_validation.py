@@ -4,6 +4,8 @@ import json
 from typing import Any
 
 
+FALLBACK_TOOL_NAME = "__fallback__"
+FALLBACK_TOOL_TAGS = ["fallback", "no tool", "unsupported", "unknown", "ambiguous", "chat"]
 FALLBACK_MESSAGE = "I work only with available tools."
 
 
@@ -11,11 +13,18 @@ def build_dataset_system_contract(answer_allowed: bool) -> dict[str, Any]:
     return {"answer_allowed": bool(answer_allowed)}
 
 
-def build_dataset_fallback_payload(answer_allowed: bool) -> dict[str, Any]:
+def build_dataset_fallback_tool() -> dict[str, Any]:
     return {
-        "tool_calls": [],
-        "answer": bool(answer_allowed),
-        "fallback": True,
+        "name": FALLBACK_TOOL_NAME,
+        "description": "Select when no available tool should be called.",
+        "tags": list(FALLBACK_TOOL_TAGS),
+        "arguments_schema": {"type": "object", "properties": {}, "required": []},
+    }
+
+
+def build_dataset_fallback_payload() -> dict[str, Any]:
+    return {
+        "tool_calls": [{"name": FALLBACK_TOOL_NAME, "arguments": {}}],
     }
 
 
@@ -23,6 +32,12 @@ def build_dataset_fallback_response(answer_allowed: bool) -> str | None:
     if not answer_allowed:
         return None
     return FALLBACK_MESSAGE
+
+
+def with_dataset_fallback_tool(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if any(str(tool.get("name") or "") == FALLBACK_TOOL_NAME for tool in tools):
+        return list(tools)
+    return [*tools, build_dataset_fallback_tool()]
 
 
 def build_preview_lines(content: str, limit: int = 5) -> list[dict[str, Any]]:
@@ -252,30 +267,26 @@ def validate_dataset_content(content: str, max_issues: int = 25) -> dict[str, An
                 _validate_legacy_schema(tool, line_number, add_issue)
             tool_map[name] = tool
 
-        if "tool_calls" not in payload or "answer" not in payload:
-            add_issue(line_number, "Assistant payload must include tool_calls and answer.")
+        if "tool_calls" not in payload:
+            add_issue(line_number, "Assistant payload must include tool_calls.")
             continue
-        if not isinstance(payload["tool_calls"], list) or not isinstance(payload["answer"], bool):
+        if set(payload.keys()) != {"tool_calls"}:
+            add_issue(line_number, "Assistant payload may only contain tool_calls.")
+            continue
+        if not isinstance(payload["tool_calls"], list):
             add_issue(line_number, "Assistant payload has invalid top-level field types.")
             continue
-
-        if payload.get("fallback") is True:
-            if payload["tool_calls"] != []:
-                add_issue(line_number, "Fallback payload cannot include tool calls.")
-            if payload["answer"] is not True:
-                add_issue(line_number, "Fallback payload must set answer=true.")
-            continue
-
-        if payload["answer"] is True:
-            add_issue(line_number, "answer-only responses must use fallback.")
-            continue
         if payload["tool_calls"] == []:
-            add_issue(line_number, "empty tool_calls must use fallback.")
+            add_issue(line_number, "Assistant payload must select a tool or the fallback tool.")
             continue
 
+        saw_fallback = False
         for call in payload["tool_calls"]:
             if not isinstance(call, dict) or "name" not in call:
                 add_issue(line_number, "Each tool call must be an object with name.")
+                continue
+            if set(call.keys()) - {"name", "arguments"}:
+                add_issue(line_number, "Tool call may only contain name and arguments.")
                 continue
             tool_name = call["name"]
             if tool_name not in tool_map:
@@ -287,6 +298,11 @@ def validate_dataset_content(content: str, max_issues: int = 25) -> dict[str, An
                 continue
             if not _schema_ok(arguments, tool_map[tool_name]):
                 add_issue(line_number, f"Tool call {tool_name} arguments do not match arguments_schema.")
+            if tool_name == FALLBACK_TOOL_NAME:
+                saw_fallback = True
+
+        if saw_fallback and len(payload["tool_calls"]) != 1:
+            add_issue(line_number, "Fallback tool cannot be combined with other tool calls.")
 
     if row_count == 0:
         add_issue(0, "Dataset must contain at least one JSONL row.")

@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from main import app
+from protonx.contracts import FALLBACK_TOOL_NAME
 
 
 client = TestClient(app)
@@ -61,4 +62,26 @@ def test_tools_validate_rejects_unsupported_schema_subset():
             ]
         },
     )
+    assert response.status_code == 400
+
+
+def test_tools_validate_rejects_reserved_fallback_tool_name():
+    response = client.post(
+        "/tools/validate",
+        json={
+            "tools": [
+                {
+                    "name": FALLBACK_TOOL_NAME,
+                    "description": "Reserved name",
+                    "tags": ["fallback"],
+                    "arguments_schema": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                }
+            ]
+        },
+    )
+
     assert response.status_code == 400

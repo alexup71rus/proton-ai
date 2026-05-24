@@ -20,8 +20,8 @@ class ModelRuntime:
         self._model: TinyRouterModel | None = None
         self._tokenizer: spm.SentencePieceProcessor | None = None
 
-    def _fallback(self, answer_allowed: bool) -> str:
-        return json.dumps(build_fallback_payload(answer_allowed))
+    def _fallback(self) -> str:
+        return json.dumps(build_fallback_payload())
 
     def _clear_cached_runtime(self) -> None:
         self._artifact_signature = None
@@ -89,12 +89,9 @@ class ModelRuntime:
         return artifacts
 
     def generate(self, prompt: dict) -> str:
-        answer_allowed = bool(
-            prompt.get("answer_allowed", prompt.get("system", {}).get("answer_allowed", True))
-        )
         runtime = self._get_runtime()
         if runtime is None:
-            return self._fallback(answer_allowed)
+            return self._fallback()
 
         config, model, tokenizer = runtime
         prompt_text = serialize_inference_prompt(prompt)
@@ -115,6 +112,6 @@ class ModelRuntime:
 
         decoded = tokenizer.decode(generated)
         if "OUTPUT:\n" not in decoded:
-            return self._fallback(answer_allowed)
+            return self._fallback()
         candidate = decoded.split("OUTPUT:\n", 1)[1].strip()
-        return candidate or self._fallback(answer_allowed)
+        return candidate or self._fallback()

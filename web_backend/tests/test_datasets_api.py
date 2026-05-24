@@ -17,8 +17,6 @@ def _valid_dataset_line() -> bytes:
         "user": "show me light",
         "assistant": {
             "tool_calls": [{"name": "light", "arguments": {}}],
-            "answer": False,
-            "fallback": False,
         },
     }
     return (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
@@ -97,6 +95,27 @@ def test_post_dataset_import_rejects_invalid_jsonl(tmp_path: Path, monkeypatch, 
 
     assert response.status_code == 400
     assert "compact fields" in response.json()["detail"]
+
+
+def test_post_dataset_import_rejects_assistant_extra_fields(tmp_path: Path, monkeypatch, client) -> None:
+    monkeypatch.setenv("PROTONX_DATASET_DIR", str(tmp_path))
+
+    response = client.post(
+        "/api/datasets/import",
+        files={
+            "file": (
+                "broken.jsonl",
+                (
+                    '{"tools":[{"name":"light","tags":["light"]}],"user":"show me light",'
+                    '"assistant":{"tool_calls":[{"name":"light","arguments":{}}],"answer":false}}\n'
+                ).encode("utf-8"),
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert "only contain tool_calls" in response.json()["detail"]
 
 
 def test_get_dataset_preview_returns_preview_and_validation(tmp_path: Path, monkeypatch, client) -> None:

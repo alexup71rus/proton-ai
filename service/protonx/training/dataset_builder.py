@@ -3,6 +3,7 @@ from itertools import permutations
 from pathlib import Path
 
 from protonx.contracts import build_fallback_payload
+from protonx.contracts import with_compact_fallback_tool
 from protonx.model_contract import compact_tool_from_definition
 from protonx.model_contract import compact_tool_from_record
 from protonx.schemas import ToolDefinition
@@ -50,21 +51,93 @@ def _tool_aliases(tool: ToolDefinition) -> list[str]:
         if alias in selected_aliases:
             continue
         selected_aliases.append(alias)
-        if len(selected_aliases) >= 2:
+        if len(selected_aliases) >= 3:
             break
-    return selected_aliases[:2]
+    return selected_aliases[:3]
+
+
+def _tool_specific_requests(tool: ToolDefinition) -> list[str]:
+    custom_requests: dict[str, list[str]] = {
+        "list_downloads": [
+            "show me downloads",
+            "check downloads",
+            "list downloads",
+            "open downloads folder",
+            "what is in downloads",
+            "show my downloaded files",
+            "покажи загрузки",
+            "что в загрузках",
+            "открой папку загрузок",
+            "список загрузок",
+        ],
+        "get_node_version": [
+            "show me node version",
+            "check node",
+            "node version",
+            "what is the node version",
+            "show node js version",
+            "покажи версию node",
+            "какая версия node",
+            "версия node js",
+        ],
+        "get_python_version": [
+            "show me python version",
+            "check python",
+            "python version",
+            "what is the python version",
+            "show interpreter version",
+            "покажи версию python",
+            "какая версия python",
+            "какой python установлен",
+        ],
+        "get_current_time": [
+            "show me current time",
+            "show me time",
+            "what time is it",
+            "what time is it now",
+            "current time",
+            "покажи время",
+            "который час",
+            "текущее время",
+        ],
+        "get_disk_usage": [
+            "show me disk usage",
+            "check disk",
+            "show free space",
+            "how much free space is left",
+            "disk usage",
+            "покажи место на диске",
+            "сколько свободного места",
+            "свободное место на диске",
+        ],
+    }
+    return list(custom_requests.get(tool.name, []))
 
 
 def _build_user_requests(tool: ToolDefinition) -> list[str]:
     arguments = _default_arguments(tool)
-    user_requests: list[str] = []
+    user_requests: list[str] = list(_tool_specific_requests(tool))
     for alias in _tool_aliases(tool):
         is_cyrillic = _has_cyrillic(alias)
         if not arguments:
             if is_cyrillic:
-                user_requests.extend([f"покажи {alias}", f"проверь {alias}"])
+                user_requests.extend(
+                    [
+                        f"покажи {alias}",
+                        f"проверь {alias}",
+                        f"выведи {alias}",
+                        f"отобрази {alias}",
+                    ]
+                )
             else:
-                user_requests.extend([f"show me {alias}", f"check {alias}"])
+                user_requests.extend(
+                    [
+                        f"show me {alias}",
+                        f"check {alias}",
+                        f"get {alias}",
+                        f"display {alias}",
+                    ]
+                )
             continue
 
         if len(arguments) == 1 and next(iter(arguments)) == "state":
@@ -74,6 +147,8 @@ def _build_user_requests(tool: ToolDefinition) -> list[str]:
                     [
                         f"поставь {alias} на {state_value}",
                         f"измени {alias} на {state_value}",
+                        f"переключи {alias} на {state_value}",
+                        f"сделай {alias} {state_value}",
                     ]
                 )
             else:
@@ -81,6 +156,8 @@ def _build_user_requests(tool: ToolDefinition) -> list[str]:
                     [
                         f"set {alias} to {state_value}",
                         f"change {alias} to {state_value}",
+                        f"switch {alias} to {state_value}",
+                        f"make {alias} {state_value}",
                     ]
                 )
             continue
@@ -93,6 +170,8 @@ def _build_user_requests(tool: ToolDefinition) -> list[str]:
                 [
                     f"используй {alias} с {argument_phrase}",
                     f"запусти {alias} с {argument_phrase}",
+                    f"вызови {alias} с {argument_phrase}",
+                    f"выполни {alias} с {argument_phrase}",
                 ]
             )
         else:
@@ -100,6 +179,8 @@ def _build_user_requests(tool: ToolDefinition) -> list[str]:
                 [
                     f"use {alias} with {argument_phrase}",
                     f"run {alias} with {argument_phrase}",
+                    f"call {alias} with {argument_phrase}",
+                    f"execute {alias} with {argument_phrase}",
                 ]
             )
 
@@ -131,23 +212,22 @@ def _tool_call_example(
         "assistant": {
             "tool_calls": [
                 {"name": primary.name, "arguments": _default_arguments(primary)}
-            ],
-            "answer": False,
-            "fallback": False,
+            ]
         },
     }
 
 
 def _fallback_row(tool_payloads: list[dict], user_text: str) -> dict:
     return {
-        "tools": [
-            compact_tool_from_record(tool_payload, variation_key=f"{user_text}|{index}")
-            for index, tool_payload in enumerate(tool_payloads)
-        ],
+        "tools": with_compact_fallback_tool(
+            [
+                compact_tool_from_record(tool_payload, variation_key=f"{user_text}|{index}")
+                for index, tool_payload in enumerate(tool_payloads)
+            ],
+            variation_key=user_text,
+        ),
         "user": user_text,
-        "assistant": {
-            **build_fallback_payload(True),
-        },
+        "assistant": build_fallback_payload(),
     }
 
 
@@ -177,6 +257,18 @@ def _ambiguous_fallback_example(tools: list[ToolDefinition]) -> dict:
         [compact_tool_from_definition(tool) for tool in tools[:2]],
         "change it",
     )
+
+
+def _chatty_fallback_examples(tools: list[ToolDefinition]) -> list[dict]:
+    tool_payloads = [compact_tool_from_definition(tool) for tool in tools[:2]]
+    return [
+        _fallback_row(tool_payloads, "hello"),
+        _fallback_row(tool_payloads, "hi there"),
+        _fallback_row(tool_payloads, "what's up"),
+        _fallback_row(tool_payloads, "привет"),
+        _fallback_row(tool_payloads, "доброе утро"),
+        _fallback_row(tool_payloads, "поболтай со мной"),
+    ]
 
 
 def _hard_negative_examples(tools: list[ToolDefinition]) -> list[dict]:
@@ -247,9 +339,7 @@ def _argument_probe_examples(tools: list[ToolDefinition]) -> list[dict]:
                 "assistant": {
                     "tool_calls": [
                         {"name": "search_files", "arguments": {"query": "package.json"}}
-                    ],
-                    "answer": False,
-                    "fallback": False,
+                    ]
                 },
             }
         )
@@ -265,9 +355,7 @@ def _argument_probe_examples(tools: list[ToolDefinition]) -> list[dict]:
                 "assistant": {
                     "tool_calls": [
                         {"name": "search_files", "arguments": {"query": "README.md"}}
-                    ],
-                    "answer": False,
-                    "fallback": False,
+                    ]
                 },
             }
         )
@@ -289,9 +377,7 @@ def _argument_probe_examples(tools: list[ToolDefinition]) -> list[dict]:
                 "assistant": {
                     "tool_calls": [
                         {"name": "search_web", "arguments": {"q": "node js latest version"}}
-                    ],
-                    "answer": False,
-                    "fallback": False,
+                    ]
                 },
             }
         )
@@ -343,6 +429,7 @@ def build_examples(tools: list[ToolDefinition]) -> list[dict]:
         special_rows.append(_fallback_example_ru(tools))
         special_rows.append(_unsupported_fallback_example(tools))
         special_rows.append(_ambiguous_fallback_example(tools))
+        special_rows.extend(_chatty_fallback_examples(tools))
         special_rows.extend(_hard_negative_examples(tools))
     special_rows.extend(_argument_probe_examples(tools))
     return _interleave_rows(tool_rows, special_rows)

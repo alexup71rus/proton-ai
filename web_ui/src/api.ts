@@ -29,6 +29,7 @@ export interface DatasetSummary {
   name: string;
   size_bytes: number;
   updated_at: string;
+  sha1: string;
   row_count: number;
   validation_status: "valid" | "invalid";
   issue_count: number;
@@ -100,6 +101,47 @@ export interface LogsExportResponse {
 }
 
 
+export interface WorkspaceModel {
+  mode: "new" | "loaded";
+  label: string;
+  model_name: string;
+  tokenizer_name: string;
+  output_root_dir: string;
+  artifact_name: string;
+  model_path: string | null;
+  tokenizer_path: string | null;
+  hidden_dim: number;
+  num_layers: number;
+  num_heads: number;
+}
+
+
+export interface WorkspaceTrainingSettings {
+  dataset_name: string;
+  epochs: number;
+  batch_size: number;
+}
+
+
+export interface WorkspaceTestSettings {
+  user_text: string;
+  answer_allowed: boolean;
+  show_debug: boolean;
+}
+
+
+export interface WorkspaceSettingsPayload {
+  selected_model: WorkspaceModel;
+  training: WorkspaceTrainingSettings;
+  test: WorkspaceTestSettings;
+}
+
+
+export interface WorkspaceSettingsResponse extends WorkspaceSettingsPayload {
+  storage_path: string;
+}
+
+
 export interface TrainingStatus {
   status: string;
   current_epoch: number;
@@ -113,9 +155,21 @@ export interface TrainingStatus {
   batch_size: number;
   model_name: string;
   tokenizer_name: string;
+  output_root_dir: string | null;
+  artifact_name: string;
   checkpoint_path: string | null;
   model_path: string | null;
   tokenizer_path: string | null;
+  dataset_path: string | null;
+  dataset_sha1: string | null;
+  dataset_row_count: number;
+  eval_total: number;
+  eval_valid: number;
+  eval_exact: number;
+  eval_positive_total: number;
+  eval_positive_exact: number;
+  eval_fallback_total: number;
+  eval_fallback_exact: number;
 }
 
 
@@ -125,6 +179,30 @@ export interface TrainingStartPayload {
   batch_size: number;
   model_name: string;
   tokenizer_name: string;
+  output_root_dir: string;
+  artifact_name: string;
+  resume_model_path: string | null;
+  resume_tokenizer_path: string | null;
+  hidden_dim: number;
+  num_layers: number;
+  num_heads: number;
+}
+
+
+export interface TestRunPayload {
+  user_text: string;
+  answer_allowed?: boolean;
+  model_path?: string | null;
+  tokenizer_path?: string | null;
+}
+
+
+export interface ModelImportResponse {
+  imported: boolean;
+  output_root_dir: string;
+  artifact_name: string;
+  model_path: string;
+  tokenizer_path: string;
 }
 
 
@@ -203,6 +281,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function fetchTools(): Promise<ToolsResponse> {
   return request<ToolsResponse>("/api/tools");
+}
+
+
+export async function fetchWorkspaceSettings(): Promise<WorkspaceSettingsResponse> {
+  return request<WorkspaceSettingsResponse>("/api/workspace");
+}
+
+
+export async function saveWorkspaceSettings(payload: WorkspaceSettingsPayload): Promise<WorkspaceSettingsResponse> {
+  return request<WorkspaceSettingsResponse>("/api/workspace", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
 
 
@@ -313,11 +404,41 @@ export async function startTraining(payload: TrainingStartPayload): Promise<Trai
 }
 
 
-export async function runTest(userText: string, answerAllowed = false): Promise<TestResponse> {
+export async function runTest(payload: TestRunPayload): Promise<TestResponse> {
   return request<TestResponse>("/api/test", {
     method: "POST",
-    body: JSON.stringify({ user_text: userText, answer_allowed: answerAllowed }),
+    body: JSON.stringify(payload),
   });
+}
+
+
+export async function importModelArtifacts(params: {
+  checkpointFile: File;
+  tokenizerFile: File;
+  vocabFile?: File | null;
+  outputRootDir: string;
+  artifactName: string;
+}): Promise<ModelImportResponse> {
+  const formData = new FormData();
+  formData.append("checkpoint", params.checkpointFile);
+  formData.append("tokenizer", params.tokenizerFile);
+  if (params.vocabFile) {
+    formData.append("vocab", params.vocabFile);
+  }
+  formData.append("output_root_dir", params.outputRootDir);
+  formData.append("artifact_name", params.artifactName);
+
+  const response = await fetch("/api/models/import", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || "Model import failed.");
+  }
+
+  return response.json() as Promise<ModelImportResponse>;
 }
 
 

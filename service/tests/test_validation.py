@@ -1,4 +1,5 @@
 from protonx.routing.validate import validate_model_output
+from protonx.contracts import build_fallback_tool
 from protonx.schemas import JsonSchema, ToolDefinition
 
 
@@ -17,7 +18,7 @@ def test_validator_rejects_unknown_tool():
     ]
     result = validate_model_output(
         candidate_tools=tools,
-        raw_output='{"tool_calls":[{"name":"lamp","arguments":{"state":"on"}}],"answer":false}',
+        raw_output='{"tool_calls":[{"name":"lamp","arguments":{"state":"on"}}]}',
         answer_allowed=False,
     )
     assert result.valid is False
@@ -25,36 +26,60 @@ def test_validator_rejects_unknown_tool():
 
 
 def test_validator_accepts_fallback_payload():
-    tools = []
+    tools = [build_fallback_tool()]
     result = validate_model_output(
         candidate_tools=tools,
-        raw_output='{"tool_calls":[],"answer":true,"fallback":true}',
+        raw_output='{"tool_calls":[{"name":"__fallback__","arguments":{}}]}',
         answer_allowed=True,
     )
     assert result.valid is True
     assert result.final_action == "fallback"
 
 
-def test_validator_accepts_no_answer_fallback_when_answer_is_not_allowed():
-    tools = []
+def test_validator_rejects_fallback_tool_combined_with_other_calls():
+    tools = [
+        build_fallback_tool(),
+        ToolDefinition(
+            name="light",
+            description="Light control",
+            tags=["light"],
+            arguments_schema=JsonSchema(
+                type="object",
+                properties={"state": {"type": "string", "enum": ["on", "off"]}},
+                required=["state"],
+            ),
+        ),
+    ]
     result = validate_model_output(
         candidate_tools=tools,
-        raw_output='{"tool_calls":[],"answer":false,"fallback":true}',
+        raw_output='{"tool_calls":[{"name":"__fallback__","arguments":{}},{"name":"light","arguments":{"state":"on"}}]}',
         answer_allowed=False,
     )
-    assert result.valid is True
-    assert result.final_action == "fallback"
+    assert result.valid is False
+    assert result.error == "fallback tool cannot be combined with other tool calls"
 
 
 def test_validator_rejects_empty_tool_calls_without_fallback():
     tools = []
     result = validate_model_output(
         candidate_tools=tools,
-        raw_output='{"tool_calls":[],"answer":false}',
+        raw_output='{"tool_calls":[]}',
         answer_allowed=False,
     )
     assert result.valid is False
-    assert result.error == "empty tool_calls must use fallback"
+    assert result.error == "empty tool_calls must use __fallback__"
+
+
+def test_validator_rejects_unexpected_top_level_fields():
+    tools = [build_fallback_tool()]
+    result = validate_model_output(
+        candidate_tools=tools,
+        raw_output='{"tool_calls":[{"name":"__fallback__","arguments":{}}],"response":"nope"}',
+        answer_allowed=False,
+    )
+
+    assert result.valid is False
+    assert result.error == "unexpected top-level fields"
 
 
 def test_validator_rejects_argument_outside_enum():
@@ -72,7 +97,7 @@ def test_validator_rejects_argument_outside_enum():
     ]
     result = validate_model_output(
         candidate_tools=tools,
-        raw_output='{"tool_calls":[{"name":"light","arguments":{"state":"dim"}}],"answer":false}',
+        raw_output='{"tool_calls":[{"name":"light","arguments":{"state":"dim"}}]}',
         answer_allowed=False,
     )
     assert result.valid is False

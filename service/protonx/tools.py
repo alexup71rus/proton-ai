@@ -1,8 +1,11 @@
+from protonx.contracts import FALLBACK_TOOL_NAME
 from protonx.schemas import ToolDefinition
 
 
 def validate_unique_tool_names(tools: list[ToolDefinition]) -> None:
     names = [tool.name for tool in tools]
+    if FALLBACK_TOOL_NAME in names:
+        raise ValueError(f"tool name {FALLBACK_TOOL_NAME} is reserved")
     if len(names) != len(set(names)):
         raise ValueError("tool names must be unique")
 

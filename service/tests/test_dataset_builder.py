@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from protonx.contracts import FALLBACK_TOOL_NAME
 from protonx.routing.prompt import build_routing_prompt
 from protonx.schemas import JsonSchema, ToolDefinition
 from protonx.training.dataset_builder import build_examples, build_synthetic_dataset
@@ -39,7 +40,10 @@ def test_build_synthetic_dataset_creates_jsonl_rows(tmp_path: Path):
         if line.strip()
     ]
     assert any("tool_calls" in row["assistant"] for row in rows)
-    assert any(row["assistant"].get("fallback") is True for row in rows)
+    assert any(
+        row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
+        for row in rows
+    )
     assert any(
         {tool["name"] for tool in row["tools"]} >= {"window", "light"} for row in rows
     )
@@ -208,13 +212,15 @@ def test_build_examples_include_unknown_and_ambiguous_fallback_rows():
 
     rows = build_examples(tools)
     fallback_rows = [
-        row for row in rows if row["assistant"].get("fallback") is True
+        row
+        for row in rows
+        if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
     ]
     assert any(row["user"] == "how are you" for row in fallback_rows)
     assert any(row["user"] == "как дела" for row in fallback_rows)
     assert any(row["user"] == "tell me a joke" for row in fallback_rows)
     assert any(row["user"] == "change it" for row in fallback_rows)
-    assert all(row["assistant"]["answer"] is True for row in fallback_rows)
+    assert all(row["assistant"]["tool_calls"][0]["arguments"] == {} for row in fallback_rows)
 
 
 def test_build_examples_include_version_hard_negative_when_multiple_version_tools_exist():
@@ -234,11 +240,17 @@ def test_build_examples_include_version_hard_negative_when_multiple_version_tool
     ]
 
     rows = build_examples(tools)
-    fallback_rows = {row["user"]: row for row in rows if row["assistant"].get("fallback") is True}
+    fallback_rows = {
+        row["user"]: row
+        for row in rows
+        if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
+    }
 
     assert "show me version" in fallback_rows
     assert "покажи версию" in fallback_rows
-    assert fallback_rows["show me version"]["assistant"]["tool_calls"] == []
+    assert fallback_rows["show me version"]["assistant"]["tool_calls"] == [
+        {"name": FALLBACK_TOOL_NAME, "arguments": {}}
+    ]
 
 
 def test_build_examples_include_ambiguous_hard_negatives_for_overlapping_controls():
@@ -270,7 +282,11 @@ def test_build_examples_include_ambiguous_hard_negatives_for_overlapping_control
     ]
 
     rows = build_examples(tools)
-    fallback_rows = {row["user"]: row for row in rows if row["assistant"].get("fallback") is True}
+    fallback_rows = {
+        row["user"]: row
+        for row in rows
+        if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
+    }
 
     assert "make it quieter" in fallback_rows
     assert "сделай потише" in fallback_rows
@@ -358,7 +374,7 @@ def test_build_examples_vary_tag_order_across_rows_for_same_tool():
     assert len(list_downloads_tag_orders) >= 2
 
 
-def test_build_examples_interleave_answer_true_rows_into_dataset():
+def test_build_examples_interleave_fallback_rows_into_dataset():
     tools = [
         ToolDefinition(
             name="list_downloads",
@@ -375,8 +391,10 @@ def test_build_examples_interleave_answer_true_rows_into_dataset():
     ]
 
     rows = build_examples(tools)
-    first_answer_true_index = next(
-        index for index, row in enumerate(rows) if row["assistant"]["answer"] is True
+    first_fallback_index = next(
+        index
+        for index, row in enumerate(rows)
+        if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
     )
 
-    assert first_answer_true_index < len(rows) - 4
+    assert first_fallback_index < len(rows) - 4

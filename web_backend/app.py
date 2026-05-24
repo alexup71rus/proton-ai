@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -12,9 +12,10 @@ from web_backend.config import get_tools_file
 from web_backend import service_client
 from web_backend.datasets import append_dataset_content, create_manual_dataset, delete_dataset, duplicate_dataset, get_dataset_preview, get_dataset_validation_report, import_dataset_file, list_dataset_files, resolve_dataset_path, save_bootstrap_dataset, summarize_dataset
 from web_backend.logs import export_failed_cases_as_dataset, load_human_logs
-from web_backend.schemas import DatasetAppendPayload, DatasetBootstrapPayload, DatasetBootstrapResponse, DatasetCreatePayload, DatasetDeleteResponse, DatasetDetailResponse, DatasetDuplicateResponse, DatasetMutationResponse, DatasetValidationReport, DatasetsResponse, ImportDatasetResponse, LogsExportResponse, LogsResponse, SaveToolsResponse, TestPayload, TestResponse, ToolsPayload, ToolsResponse, TrainingStartPayload, TrainingStatusResponse
+from web_backend.schemas import DatasetAppendPayload, DatasetBootstrapPayload, DatasetBootstrapResponse, DatasetCreatePayload, DatasetDeleteResponse, DatasetDetailResponse, DatasetDuplicateResponse, DatasetMutationResponse, DatasetValidationReport, DatasetsResponse, ImportDatasetResponse, LogsExportResponse, LogsResponse, ModelImportResponse, SaveToolsResponse, TestPayload, TestResponse, ToolsPayload, ToolsResponse, TrainingStartPayload, TrainingStatusResponse, WorkspaceSettingsPayload, WorkspaceSettingsResponse
 from web_backend.tools_store import load_tools, save_tools
 from web_backend.tool_executor import execute_tool, validate_tool_executor_paths
+from web_backend.workspace_store import load_workspace_settings, save_workspace_settings, update_workspace_settings
 
 
 app = FastAPI(title="Proton-X UI Backend")
@@ -60,9 +61,21 @@ def _normalize_training_status(payload: dict | None) -> TrainingStatusResponse:
             "batch_size": raw.get("batch_size") or 1,
             "model_name": raw.get("model_name") or "tiny-router",
             "tokenizer_name": raw.get("tokenizer_name") or "sentencepiece-bpe",
+            "output_root_dir": raw.get("output_root_dir"),
+            "artifact_name": raw.get("artifact_name") or "tiny_router_v1",
             "checkpoint_path": raw.get("checkpoint_path"),
             "model_path": raw.get("model_path"),
             "tokenizer_path": raw.get("tokenizer_path"),
+            "dataset_path": raw.get("dataset_path"),
+            "dataset_sha1": raw.get("dataset_sha1"),
+            "dataset_row_count": raw.get("dataset_row_count") or 0,
+            "eval_total": raw.get("eval_total") or 0,
+            "eval_valid": raw.get("eval_valid") or 0,
+            "eval_exact": raw.get("eval_exact") or 0,
+            "eval_positive_total": raw.get("eval_positive_total") or 0,
+            "eval_positive_exact": raw.get("eval_positive_exact") or 0,
+            "eval_fallback_total": raw.get("eval_fallback_total") or 0,
+            "eval_fallback_exact": raw.get("eval_fallback_exact") or 0,
         }
     )
 
@@ -80,9 +93,76 @@ def _to_service_tools(tools: list[dict]) -> list[dict]:
     return [_to_service_tool(tool) for tool in tools]
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _resolve_output_root(output_root_dir: str) -> Path:
+    path = Path(output_root_dir).expanduser()
+    if not path.is_absolute():
+        path = _repo_root() / path
+    return path
+
+
+def _normalize_artifact_name(artifact_name: str) -> str:
+    normalized = artifact_name.strip()
+    for suffix in (".pt", ".model", ".vocab"):
+        if normalized.endswith(suffix):
+            normalized = normalized[: -len(suffix)]
+            break
+    normalized = normalized.strip().strip("./")
+    if not normalized:
+        raise HTTPException(status_code=400, detail="artifact_name must be a non-empty file stem")
+    if Path(normalized).name != normalized:
+        raise HTTPException(status_code=400, detail="artifact_name must not contain path separators")
+    return normalized
+
+
+def _load_workspace_settings() -> WorkspaceSettingsResponse:
+    try:
+        return load_workspace_settings()
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _save_workspace_settings(payload: WorkspaceSettingsPayload | dict) -> WorkspaceSettingsResponse:
+    try:
+        return save_workspace_settings(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _update_workspace_settings(updates: dict) -> WorkspaceSettingsResponse:
+    try:
+        return update_workspace_settings(updates)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _coalesce_str(value: str | None, fallback: str) -> str:
+    if value is None:
+        return fallback
+    normalized = value.strip()
+    return normalized or fallback
+
+
+def _coalesce_int(value: int | None, fallback: int) -> int:
+    return fallback if value is None else value
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/workspace", response_model=WorkspaceSettingsResponse)
+def get_workspace_settings() -> WorkspaceSettingsResponse:
+    return _load_workspace_settings()
+
+
+@app.put("/api/workspace", response_model=WorkspaceSettingsResponse)
+def put_workspace_settings(payload: WorkspaceSettingsPayload) -> WorkspaceSettingsResponse:
+    return _save_workspace_settings(payload)
 
 
 @app.get("/api/tools", response_model=ToolsResponse)
@@ -238,32 +318,161 @@ def download_dataset(dataset_name: str) -> FileResponse:
 
 @app.get("/api/training/status", response_model=TrainingStatusResponse)
 def get_training_status() -> TrainingStatusResponse:
-    return _normalize_training_status(service_client.get_json("/train/status"))
+    status = _normalize_training_status(service_client.get_json("/train/status"))
+    updates: dict[str, dict[str, object]] = {}
+
+    if status.dataset_path:
+        updates["training"] = {"dataset_name": Path(status.dataset_path).name}
+
+    if status.model_path and status.tokenizer_path:
+        workspace = _load_workspace_settings()
+        updates["selected_model"] = {
+            "mode": "loaded",
+            "label": status.artifact_name or workspace.selected_model.label,
+            "model_name": status.model_name or workspace.selected_model.model_name,
+            "tokenizer_name": status.tokenizer_name or workspace.selected_model.tokenizer_name,
+            "output_root_dir": status.output_root_dir or workspace.selected_model.output_root_dir,
+            "artifact_name": status.artifact_name or workspace.selected_model.artifact_name,
+            "model_path": status.model_path,
+            "tokenizer_path": status.tokenizer_path,
+        }
+
+    if updates:
+        _update_workspace_settings(updates)
+
+    return status
+
+
+@app.post("/api/models/import", response_model=ModelImportResponse)
+async def import_model(
+    checkpoint: UploadFile = File(...),
+    tokenizer: UploadFile = File(...),
+    vocab: UploadFile | None = File(default=None),
+    output_root_dir: str = Form(default="data"),
+    artifact_name: str = Form(default="tiny_router_v1"),
+) -> ModelImportResponse:
+    normalized_artifact_name = _normalize_artifact_name(artifact_name)
+    resolved_output_root = _resolve_output_root(output_root_dir)
+    weights_dir = resolved_output_root / "weights"
+    tokenizers_dir = resolved_output_root / "tokenizers"
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    tokenizers_dir.mkdir(parents=True, exist_ok=True)
+
+    model_path = weights_dir / f"{normalized_artifact_name}.pt"
+    tokenizer_path = tokenizers_dir / f"{normalized_artifact_name}.model"
+    model_path.write_bytes(await checkpoint.read())
+    tokenizer_path.write_bytes(await tokenizer.read())
+
+    if vocab is not None:
+        vocab_path = tokenizers_dir / f"{normalized_artifact_name}.vocab"
+        vocab_path.write_bytes(await vocab.read())
+
+    workspace = _load_workspace_settings()
+    _update_workspace_settings(
+        {
+            "selected_model": {
+                "mode": "loaded",
+                "label": normalized_artifact_name,
+                "model_name": workspace.selected_model.model_name,
+                "tokenizer_name": workspace.selected_model.tokenizer_name,
+                "output_root_dir": str(resolved_output_root),
+                "artifact_name": normalized_artifact_name,
+                "model_path": str(model_path),
+                "tokenizer_path": str(tokenizer_path),
+            }
+        }
+    )
+
+    return ModelImportResponse(
+        imported=True,
+        output_root_dir=str(resolved_output_root),
+        artifact_name=normalized_artifact_name,
+        model_path=str(model_path),
+        tokenizer_path=str(tokenizer_path),
+    )
 
 
 @app.post("/api/training/start", response_model=TrainingStatusResponse)
 def start_training(payload: TrainingStartPayload) -> TrainingStatusResponse:
+    workspace = _load_workspace_settings()
+    payload_fields = payload.model_fields_set
+
+    dataset_name = _coalesce_str(payload.dataset_name, workspace.training.dataset_name)
+    epochs = _coalesce_int(payload.epochs, workspace.training.epochs)
+    batch_size = _coalesce_int(payload.batch_size, workspace.training.batch_size)
+    model_name = _coalesce_str(payload.model_name, workspace.selected_model.model_name)
+    tokenizer_name = _coalesce_str(payload.tokenizer_name, workspace.selected_model.tokenizer_name)
+    output_root_dir = _coalesce_str(payload.output_root_dir, workspace.selected_model.output_root_dir)
+    artifact_name = _normalize_artifact_name(_coalesce_str(payload.artifact_name, workspace.selected_model.artifact_name))
+    hidden_dim = _coalesce_int(payload.hidden_dim, workspace.selected_model.hidden_dim)
+    num_layers = _coalesce_int(payload.num_layers, workspace.selected_model.num_layers)
+    num_heads = _coalesce_int(payload.num_heads, workspace.selected_model.num_heads)
+
+    if "resume_model_path" in payload_fields:
+        resume_model_path = payload.resume_model_path
+    elif workspace.selected_model.mode == "loaded":
+        resume_model_path = workspace.selected_model.model_path
+    else:
+        resume_model_path = None
+
+    if "resume_tokenizer_path" in payload_fields:
+        resume_tokenizer_path = payload.resume_tokenizer_path
+    elif workspace.selected_model.mode == "loaded":
+        resume_tokenizer_path = workspace.selected_model.tokenizer_path
+    else:
+        resume_tokenizer_path = None
+
     try:
-        dataset_path = resolve_dataset_path(payload.dataset_name)
+        dataset_path = resolve_dataset_path(dataset_name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"Dataset not found: {payload.dataset_name}") from exc
+        raise HTTPException(status_code=404, detail=f"Dataset not found: {dataset_name}") from exc
 
     validation = get_dataset_validation_report(dataset_path)
     if validation["status"] != "valid":
         first_issue = validation["issues"][0]["message"] if validation["issues"] else "Dataset is invalid"
         raise HTTPException(status_code=400, detail=f"Dataset validation failed: {first_issue}")
 
+    _update_workspace_settings(
+        {
+            "training": {
+                "dataset_name": dataset_name,
+                "epochs": epochs,
+                "batch_size": batch_size,
+            },
+            "selected_model": {
+                "mode": "loaded" if resume_model_path and resume_tokenizer_path else "new",
+                "label": artifact_name,
+                "model_name": model_name,
+                "tokenizer_name": tokenizer_name,
+                "output_root_dir": output_root_dir,
+                "artifact_name": artifact_name,
+                "model_path": resume_model_path,
+                "tokenizer_path": resume_tokenizer_path,
+                "hidden_dim": hidden_dim,
+                "num_layers": num_layers,
+                "num_heads": num_heads,
+            },
+        }
+    )
+
     return _normalize_training_status(
         service_client.post_json(
         "/train/start",
         {
             "dataset_path": str(dataset_path),
-            "epochs": payload.epochs,
-            "batch_size": payload.batch_size,
-            "model_name": payload.model_name,
-            "tokenizer_name": payload.tokenizer_name,
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "model_name": model_name,
+            "tokenizer_name": tokenizer_name,
+            "output_root_dir": output_root_dir,
+            "artifact_name": artifact_name,
+            "resume_model_path": resume_model_path,
+            "resume_tokenizer_path": resume_tokenizer_path,
+            "hidden_dim": hidden_dim,
+            "num_layers": num_layers,
+            "num_heads": num_heads,
         },
         )
     )
@@ -276,6 +485,10 @@ def run_test(payload: TestPayload) -> TestResponse:
         raise HTTPException(status_code=400, detail="No tools configured. Save at least one tool first.")
 
     service_tools = _to_service_tools(tools)
+    workspace = _load_workspace_settings()
+    model_path = payload.model_path or workspace.selected_model.model_path
+    tokenizer_path = payload.tokenizer_path or workspace.selected_model.tokenizer_path
+    answer_allowed = workspace.test.answer_allowed if payload.answer_allowed is None else payload.answer_allowed
 
     result_payload = service_client.post_json(
         "/chat/completions",
@@ -283,7 +496,9 @@ def run_test(payload: TestPayload) -> TestResponse:
             "messages": [{"role": "user", "content": payload.user_text}],
             "tools": service_tools,
             "tool_choice": "auto",
-            "answer_allowed": payload.answer_allowed,
+            "answer_allowed": answer_allowed,
+            "model_path": model_path,
+            "tokenizer_path": tokenizer_path,
         },
     )
     debug_payload = service_client.post_json(
@@ -291,7 +506,9 @@ def run_test(payload: TestPayload) -> TestResponse:
         {
             "user_text": payload.user_text,
             "tools": service_tools,
-            "answer_allowed": payload.answer_allowed,
+            "answer_allowed": answer_allowed,
+            "model_path": model_path,
+            "tokenizer_path": tokenizer_path,
         },
     )
 

@@ -14,22 +14,65 @@ from typing import Any
 from protonx.schemas import JsonSchema, ToolDefinition
 
 
-PROMPT_FORMAT_VERSION = "compact-v1"
+PROMPT_FORMAT_VERSION = "compact-v2"
+FALLBACK_TOOL_NAME = "__fallback__"
+FALLBACK_TOOL_TAGS = [
+    "fallback",
+    "no tool",
+    "unsupported",
+    "unknown",
+    "ambiguous",
+    "chat",
+]
 FALLBACK_MESSAGE = "I work only with available tools."
 
 
-def build_fallback_payload(answer_allowed: bool) -> dict[str, Any]:
-    return {
-        "tool_calls": [],
-        "answer": bool(answer_allowed),
-        "fallback": True,
-    }
+def build_fallback_tool() -> ToolDefinition:
+    return ToolDefinition(
+        name=FALLBACK_TOOL_NAME,
+        description="Select when no available tool should be called.",
+        tags=list(FALLBACK_TOOL_TAGS),
+        arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+    )
+
+
+def build_fallback_tool_call() -> dict[str, Any]:
+    return {"name": FALLBACK_TOOL_NAME, "arguments": {}}
+
+
+def build_fallback_payload() -> dict[str, Any]:
+    return {"tool_calls": [build_fallback_tool_call()]}
 
 
 def build_fallback_response(answer_allowed: bool) -> str | None:
     if not answer_allowed:
         return None
     return FALLBACK_MESSAGE
+
+
+def is_fallback_tool_name(name: str) -> bool:
+    return name == FALLBACK_TOOL_NAME
+
+
+def with_fallback_tool(tools: list[ToolDefinition]) -> list[ToolDefinition]:
+    if any(is_fallback_tool_name(tool.name) for tool in tools):
+        return list(tools)
+    return [*tools, build_fallback_tool()]
+
+
+def with_compact_fallback_tool(
+    tools: list[dict[str, Any]],
+    variation_key: str = "",
+) -> list[dict[str, Any]]:
+    if any(is_fallback_tool_name(str(tool.get("name") or "")) for tool in tools):
+        return list(tools)
+    return [
+        *tools,
+        compact_tool_from_definition(
+            build_fallback_tool(),
+            variation_key=f"{variation_key}|fallback",
+        ),
+    ]
 
 
 def _schema_parts(schema: JsonSchema | dict[str, Any]) -> tuple[dict[str, Any], list[str]]:

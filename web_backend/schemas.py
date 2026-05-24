@@ -48,6 +48,7 @@ class DatasetSummary(BaseModel):
     name: str
     size_bytes: int
     updated_at: str
+    sha1: str
     row_count: int = 0
     validation_status: Literal["valid", "invalid"] = "invalid"
     issue_count: int = 0
@@ -126,12 +127,55 @@ class LogsExportResponse(BaseModel):
     dataset: DatasetSummary
 
 
-class TrainingStartPayload(BaseModel):
-    dataset_name: str
-    epochs: int = 1
-    batch_size: int = 1
+class WorkspaceModelSettings(BaseModel):
+    mode: Literal["new", "loaded"] = "new"
+    label: str = "tiny_router_v1"
     model_name: str = "tiny-router"
     tokenizer_name: str = "sentencepiece-bpe"
+    output_root_dir: str = "data"
+    artifact_name: str = "tiny_router_v1"
+    model_path: str | None = None
+    tokenizer_path: str | None = None
+    hidden_dim: int = 64
+    num_layers: int = 2
+    num_heads: int = 4
+
+
+class WorkspaceTrainingSettings(BaseModel):
+    dataset_name: str = "routing.jsonl"
+    epochs: int = 1
+    batch_size: int = 1
+
+
+class WorkspaceTestSettings(BaseModel):
+    user_text: str = "сделай свет потеплее"
+    answer_allowed: bool = False
+    show_debug: bool = False
+
+
+class WorkspaceSettingsPayload(BaseModel):
+    selected_model: WorkspaceModelSettings = Field(default_factory=WorkspaceModelSettings)
+    training: WorkspaceTrainingSettings = Field(default_factory=WorkspaceTrainingSettings)
+    test: WorkspaceTestSettings = Field(default_factory=WorkspaceTestSettings)
+
+
+class WorkspaceSettingsResponse(WorkspaceSettingsPayload):
+    storage_path: str
+
+
+class TrainingStartPayload(BaseModel):
+    dataset_name: str | None = None
+    epochs: int | None = None
+    batch_size: int | None = None
+    model_name: str | None = None
+    tokenizer_name: str | None = None
+    output_root_dir: str | None = None
+    artifact_name: str | None = None
+    resume_model_path: str | None = None
+    resume_tokenizer_path: str | None = None
+    hidden_dim: int | None = None
+    num_layers: int | None = None
+    num_heads: int | None = None
 
 
 class TrainingStatusResponse(BaseModel):
@@ -147,14 +191,36 @@ class TrainingStatusResponse(BaseModel):
     batch_size: int = 1
     model_name: str = "tiny-router"
     tokenizer_name: str = "sentencepiece-bpe"
+    output_root_dir: str | None = None
+    artifact_name: str = "tiny_router_v1"
     checkpoint_path: str | None = None
     model_path: str | None = None
     tokenizer_path: str | None = None
+    dataset_path: str | None = None
+    dataset_sha1: str | None = None
+    dataset_row_count: int = 0
+    eval_total: int = 0
+    eval_valid: int = 0
+    eval_exact: int = 0
+    eval_positive_total: int = 0
+    eval_positive_exact: int = 0
+    eval_fallback_total: int = 0
+    eval_fallback_exact: int = 0
 
 
 class TestPayload(BaseModel):
     user_text: str
-    answer_allowed: bool = False
+    answer_allowed: bool | None = None
+    model_path: str | None = None
+    tokenizer_path: str | None = None
+
+
+class ModelImportResponse(BaseModel):
+    imported: bool = True
+    output_root_dir: str
+    artifact_name: str
+    model_path: str
+    tokenizer_path: str
 
 
 class ToolExecutionPayload(BaseModel):

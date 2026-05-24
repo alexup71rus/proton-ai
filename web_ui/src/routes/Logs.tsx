@@ -45,7 +45,6 @@ export function LogsRoute() {
     <section className="page">
       <header className="page-header">
         <div>
-          <span className="eyebrow">Step 04</span>
           <h1>Logs</h1>
           <p>Read routing incidents as material for the next dataset iteration, not as a raw JSON tail.</p>
         </div>

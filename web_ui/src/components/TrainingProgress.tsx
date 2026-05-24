@@ -6,11 +6,39 @@ type TrainingProgressProps = {
 };
 
 
+function formatTrainingStatusLabel(status: string | null | undefined): string {
+  switch (status) {
+    case "running":
+      return "running";
+    case "completed":
+    case "success":
+      return "complete";
+    case "failed":
+      return "failed";
+    case "idle":
+    case undefined:
+    case null:
+      return "no run yet";
+    default:
+      return status.split("_").join(" ");
+  }
+}
+
+
 function formatMetric(value: number | null | undefined): string {
   if (value == null) {
     return "-";
   }
-  return value.toFixed(4);
+  return Number.isInteger(value) ? String(value) : value.toFixed(4);
+}
+
+
+function formatRatio(hit: number, total: number): string {
+  if (total <= 0) {
+    return "-";
+  }
+  const rate = (hit / total) * 100;
+  return `${hit} / ${total} (${rate.toFixed(1)}%)`;
 }
 
 
@@ -41,6 +69,9 @@ export function TrainingProgress({ status }: TrainingProgressProps) {
   const lossHistory = status?.loss_history ?? [];
   const metrics = status?.metrics ?? {};
   const sparkline = status ? buildSparkline(lossHistory) : null;
+  const invalidCount = Math.max((status?.eval_total ?? 0) - (status?.eval_valid ?? 0), 0);
+  const hasRunState = Boolean(status && status.status !== "idle");
+  const runStatus = hasRunState && status ? status : null;
 
   return (
     <section className="panel training-progress">
@@ -49,12 +80,14 @@ export function TrainingProgress({ status }: TrainingProgressProps) {
           <span className="eyebrow">Progress</span>
           <h2>Training run</h2>
         </div>
-        <span className={`status-chip status-chip--${status?.status ?? "idle"}`}>
-          {status?.status ?? "idle"}
-        </span>
+        {hasRunState ? (
+          <span className={`status-chip status-chip--${status?.status ?? "idle"}`}>
+            {formatTrainingStatusLabel(status?.status)}
+          </span>
+        ) : null}
       </div>
 
-      {!status ? (
+      {!runStatus ? (
         <div className="empty-state empty-state--compact">
           <h3>No training state yet</h3>
           <p>Pick a dataset and start a run to see live progress here.</p>
@@ -65,22 +98,22 @@ export function TrainingProgress({ status }: TrainingProgressProps) {
             <div className="metric-card">
               <span>Epoch</span>
               <strong>
-                {status.current_epoch ?? 0} / {status.total_epochs ?? 0}
+                {runStatus.current_epoch ?? 0} / {runStatus.total_epochs ?? 0}
               </strong>
             </div>
             <div className="metric-card">
               <span>Step</span>
               <strong>
-                {status.current_step ?? 0} / {status.total_steps ?? 0}
+                {runStatus.current_step ?? 0} / {runStatus.total_steps ?? 0}
               </strong>
             </div>
             <div className="metric-card">
               <span>Loss</span>
-              <strong>{formatMetric(status.loss)}</strong>
+              <strong>{formatMetric(runStatus.loss)}</strong>
             </div>
             <div className="metric-card">
               <span>Checkpoint</span>
-              <strong>{status.checkpoint_path ? "Ready" : "Pending"}</strong>
+              <strong>{runStatus.checkpoint_path ? "Ready" : "Pending"}</strong>
             </div>
           </div>
 
@@ -112,17 +145,47 @@ export function TrainingProgress({ status }: TrainingProgressProps) {
               <dl>
                 <div>
                   <dt>Model</dt>
-                  <dd>{status.model_name || "-"}</dd>
+                  <dd>{runStatus.model_name || "-"}</dd>
                 </div>
                 <div>
                   <dt>Tokenizer</dt>
-                  <dd>{status.tokenizer_name || "-"}</dd>
+                  <dd>{runStatus.tokenizer_name || "-"}</dd>
                 </div>
                 <div>
                   <dt>Batch size</dt>
-                  <dd>{status.batch_size ?? 1}</dd>
+                  <dd>{runStatus.batch_size ?? 1}</dd>
                 </div>
               </dl>
+            </div>
+
+            <div className="panel panel--soft metrics-card">
+              <strong>Evaluation</strong>
+              {runStatus.eval_total === 0 ? (
+                <p>No post-train evaluation yet.</p>
+              ) : (
+                <dl>
+                  <div>
+                    <dt>Exact match</dt>
+                    <dd>{formatRatio(runStatus.eval_exact, runStatus.eval_total)}</dd>
+                  </div>
+                  <div>
+                    <dt>Valid output</dt>
+                    <dd>{formatRatio(runStatus.eval_valid, runStatus.eval_total)}</dd>
+                  </div>
+                  <div>
+                    <dt>Positive rows</dt>
+                    <dd>{formatRatio(runStatus.eval_positive_exact, runStatus.eval_positive_total)}</dd>
+                  </div>
+                  <div>
+                    <dt>Fallback rows</dt>
+                    <dd>{formatRatio(runStatus.eval_fallback_exact, runStatus.eval_fallback_total)}</dd>
+                  </div>
+                  <div>
+                    <dt>Invalid outputs</dt>
+                    <dd>{formatMetric(invalidCount)}</dd>
+                  </div>
+                </dl>
+              )}
             </div>
 
             <div className="panel panel--soft metrics-card">
@@ -142,10 +205,10 @@ export function TrainingProgress({ status }: TrainingProgressProps) {
             </div>
           </div>
 
-          {status.error ? (
+          {runStatus.error ? (
             <div className="feedback feedback--error">
               <strong>Training failed</strong>
-              <p>{status.error}</p>
+              <p>{runStatus.error}</p>
             </div>
           ) : null}
         </>

@@ -132,7 +132,6 @@ export function ToolsRoute() {
       <section className="page">
         <header className="page-header">
           <div>
-            <span className="eyebrow">Step 01</span>
             <h1>Tools</h1>
             <p>Load the registry and prepare a clean source of truth for the router.</p>
           </div>
@@ -150,7 +149,6 @@ export function ToolsRoute() {
       <section className="page">
         <header className="page-header">
           <div>
-            <span className="eyebrow">Step 01</span>
             <h1>Tools</h1>
             <p>Load the registry and prepare a clean source of truth for the router.</p>
           </div>
@@ -170,7 +168,6 @@ export function ToolsRoute() {
     <section className="page">
       <header className="page-header">
         <div>
-          <span className="eyebrow">Step 01</span>
           <h1>Tools</h1>
           <p>
             Edit the registry as a real source of truth, validate it in place, and keep the file readable.

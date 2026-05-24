@@ -2,6 +2,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from protonx.contracts import FALLBACK_TOOL_NAME
+from protonx.contracts import is_fallback_tool_name
 from protonx.schemas import ToolDefinition
 
 
@@ -48,34 +50,29 @@ def validate_model_output(
     except json.JSONDecodeError:
         return ValidationResult(False, None, "invalid json", "fallback")
 
-    if "tool_calls" not in payload or "answer" not in payload:
+    if "tool_calls" not in payload:
         return ValidationResult(
             False, payload, "missing required top-level fields", "fallback"
         )
-    if not isinstance(payload["tool_calls"], list) or not isinstance(payload["answer"], bool):
+    if set(payload.keys()) != {"tool_calls"}:
+        return ValidationResult(
+            False, payload, "unexpected top-level fields", "fallback"
+        )
+    if not isinstance(payload["tool_calls"], list):
         return ValidationResult(
             False, payload, "invalid top-level field types", "fallback"
         )
-
-    if payload.get("fallback") is True:
-        if payload["tool_calls"] != []:
-            return ValidationResult(
-                False, payload, "fallback cannot include tool calls", "fallback"
-            )
-        return ValidationResult(True, payload, None, "fallback")
-
-    if payload["answer"] is True:
-        return ValidationResult(
-            False, payload, "answer-only responses must use fallback", "fallback"
-        )
     if payload["tool_calls"] == []:
         return ValidationResult(
-            False, payload, "empty tool_calls must use fallback", "fallback"
+            False, payload, f"empty tool_calls must use {FALLBACK_TOOL_NAME}", "fallback"
         )
 
     allowed_names = {tool.name: tool for tool in candidate_tools}
+    saw_fallback = False
     for call in payload["tool_calls"]:
         if not isinstance(call, dict) or "name" not in call:
+            return ValidationResult(False, payload, "invalid tool call shape", "fallback")
+        if set(call.keys()) - {"name", "arguments"}:
             return ValidationResult(False, payload, "invalid tool call shape", "fallback")
         name = call["name"]
         if name not in allowed_names:
@@ -87,5 +84,14 @@ def validate_model_output(
             return ValidationResult(False, payload, "schema validation failed", "fallback")
         if not _schema_ok(arguments, allowed_names[name], strict_mode):
             return ValidationResult(False, payload, "schema validation failed", "fallback")
+        if is_fallback_tool_name(name):
+            saw_fallback = True
+
+    if saw_fallback:
+        if len(payload["tool_calls"]) != 1:
+            return ValidationResult(
+                False, payload, "fallback tool cannot be combined with other tool calls", "fallback"
+            )
+        return ValidationResult(True, payload, None, "fallback")
 
     return ValidationResult(True, payload, None, "tool_call")
