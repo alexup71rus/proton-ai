@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from protonx.config import TOKENIZER_DIR, WEIGHTS_DIR
+from protonx.config import ROOT_DIR, TOKENIZER_DIR, WEIGHTS_DIR
 from protonx.contracts import build_fallback_tool
 from protonx.contracts import build_fallback_payload
 from protonx.logging import append_router_log
@@ -47,15 +47,19 @@ def _sync_model_runtime_paths(
     model_path: str | None = None,
     tokenizer_path: str | None = None,
 ) -> None:
+    def resolve_artifact_path(raw_path: str | None, fallback: Path) -> Path:
+        if not raw_path:
+            return fallback
+        path = Path(raw_path).expanduser()
+        if path.is_absolute():
+            return path
+        return ROOT_DIR / path
+
     next_weights_path = (
-        Path(model_path)
-        if model_path
-        else Path(WEIGHTS_DIR) / "tiny_router_v1.pt"
+        resolve_artifact_path(model_path, Path(WEIGHTS_DIR) / "tiny_router_v1.pt")
     )
     next_tokenizer_path = (
-        Path(tokenizer_path)
-        if tokenizer_path
-        else Path(TOKENIZER_DIR) / "routing_spm.model"
+        resolve_artifact_path(tokenizer_path, Path(TOKENIZER_DIR) / "routing_spm.model")
     )
     if (
         MODEL_RUNTIME.weights_path != next_weights_path

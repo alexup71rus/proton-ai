@@ -1,24 +1,24 @@
 {
   "selected_model": {
-    "mode": "new",
-    "label": "custom_router",
+    "mode": "loaded",
+    "label": "custom_router_v3",
     "model_name": "tiny-router",
     "tokenizer_name": "sentencepiece-bpe",
-    "output_root_dir": "data",
-    "artifact_name": "custom_router",
-    "model_path": null,
-    "tokenizer_path": null,
-    "hidden_dim": 32,
-    "num_layers": 1,
+    "output_root_dir": "/Users/aleksandr/Documents/Projects/proton-x/data",
+    "artifact_name": "custom_router_v3",
+    "model_path": "/Users/aleksandr/Documents/Projects/proton-x/data/weights/custom_router_v3.pt",
+    "tokenizer_path": "/Users/aleksandr/Documents/Projects/proton-x/data/tokenizers/custom_router_v3.model",
+    "hidden_dim": 128,
+    "num_layers": 3,
     "num_heads": 4
   },
   "training": {
     "dataset_name": "routing.jsonl",
-    "epochs": 2,
+    "epochs": 20,
     "batch_size": 4
   },
   "test": {
-    "user_text": "сделай свет потеплее",
-    "show_debug": false
+    "user_text": "Размер диска",
+    "show_debug": true
   }
 }

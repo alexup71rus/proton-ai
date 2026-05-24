@@ -18,6 +18,7 @@ from protonx.schemas import JsonSchema, ToolDefinition
 from protonx.training.dataset_validation import validate_training_dataset_file
 from protonx.training.format import serialize_training_parts
 from protonx.training.format import serialize_training_record
+from protonx.training.format import decode_generated_continuation
 from protonx.training.common import normalize_artifact_name
 from protonx.training.model import TinyRouterConfig, TinyRouterModel
 from protonx.training.state import TRAINING_STATE
@@ -234,10 +235,12 @@ def _generate_output(
         if next_token == tokenizer.eos_id():
             break
 
-    decoded = tokenizer.decode(generated)
-    if "OUTPUT:\n" not in decoded:
-        return json.dumps(build_fallback_payload())
-    candidate = decoded.split("OUTPUT:\n", 1)[1].strip()
+    candidate = decode_generated_continuation(
+        tokenizer,
+        generated,
+        len(token_ids),
+        tokenizer.eos_id(),
+    )
     return candidate or json.dumps(build_fallback_payload())
 
 

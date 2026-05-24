@@ -7,6 +7,7 @@ import torch
 
 from protonx.contracts import build_fallback_payload
 from protonx.model_contract import PROMPT_FORMAT_VERSION
+from protonx.training.format import decode_generated_continuation
 from protonx.training.format import serialize_inference_prompt
 from protonx.training.model import TinyRouterConfig, TinyRouterModel
 
@@ -110,8 +111,10 @@ class ModelRuntime:
             if next_token == tokenizer.eos_id():
                 break
 
-        decoded = tokenizer.decode(generated)
-        if "OUTPUT:\n" not in decoded:
-            return self._fallback()
-        candidate = decoded.split("OUTPUT:\n", 1)[1].strip()
+        candidate = decode_generated_continuation(
+            tokenizer,
+            generated,
+            len(token_ids),
+            tokenizer.eos_id(),
+        )
         return candidate or self._fallback()

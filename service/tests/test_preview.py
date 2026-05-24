@@ -96,6 +96,39 @@ def test_route_preview_uses_request_scoped_model_paths(monkeypatch, tmp_path):
     assert inference.MODEL_RUNTIME.tokenizer_path == tmp_path / "tokenizers" / "custom_router.model"
 
 
+def test_route_preview_resolves_relative_model_paths_from_repo_root(monkeypatch):
+    monkeypatch.setattr(
+        inference.MODEL_RUNTIME,
+        "generate",
+        lambda prompt: '{"tool_calls":[{"name":"light","arguments":{"state":"on"}}]}',
+    )
+
+    response = client.post(
+        "/route/preview",
+        json={
+            "user_text": "turn on the lamp",
+            "model_path": "data/weights/custom_router.pt",
+            "tokenizer_path": "data/tokenizers/custom_router.model",
+            "tools": [
+                {
+                    "name": "light",
+                    "description": "Light control",
+                    "tags": ["light", "lamp"],
+                    "arguments_schema": {
+                        "type": "object",
+                        "properties": {"state": {"type": "string", "enum": ["on", "off"]}},
+                        "required": ["state"],
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert inference.MODEL_RUNTIME.weights_path == inference.ROOT_DIR / "data/weights/custom_router.pt"
+    assert inference.MODEL_RUNTIME.tokenizer_path == inference.ROOT_DIR / "data/tokenizers/custom_router.model"
+
+
 def test_route_preview_routes_single_zero_argument_tool_via_model(monkeypatch):
     monkeypatch.setattr(
         inference.MODEL_RUNTIME,

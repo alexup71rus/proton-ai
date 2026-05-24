@@ -41,6 +41,7 @@ def test_get_training_status_returns_ui_friendly_shape(monkeypatch, client) -> N
 
 def test_post_training_start_forwards_config(tmp_path: Path, monkeypatch, client) -> None:
     monkeypatch.setenv("PROTONX_DATASET_DIR", str(tmp_path))
+    monkeypatch.setenv("PROTONX_WORKSPACE_FILE", str(tmp_path / "workspace.json"))
     dataset_path = tmp_path / "routing.jsonl"
     dataset_path.write_text(_valid_dataset_line(), encoding="utf-8")
     captured: dict[str, object] = {}
@@ -88,6 +89,7 @@ def test_post_training_start_forwards_config(tmp_path: Path, monkeypatch, client
 
 def test_post_training_start_normalizes_partial_service_payload(tmp_path: Path, monkeypatch, client) -> None:
     monkeypatch.setenv("PROTONX_DATASET_DIR", str(tmp_path))
+    monkeypatch.setenv("PROTONX_WORKSPACE_FILE", str(tmp_path / "workspace.json"))
     dataset_path = tmp_path / "routing.jsonl"
     dataset_path.write_text(_valid_dataset_line(), encoding="utf-8")
 

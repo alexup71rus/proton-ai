@@ -1,4 +1,5 @@
 from protonx.routing.model_runtime import ModelRuntime
+from protonx.training.format import decode_generated_continuation
 from protonx.training.model import TinyRouterConfig
 
 
@@ -43,3 +44,16 @@ def test_get_runtime_reloads_when_artifacts_change(monkeypatch, tmp_path):
     runtime._get_runtime()
 
     assert len(load_calls) == 2
+
+
+def test_decode_generated_continuation_ignores_prompt_tokens():
+    class FakeTokenizer:
+        def decode(self, token_ids):
+            return "".join(str(token_id) for token_id in token_ids)
+
+    assert decode_generated_continuation(
+        FakeTokenizer(),
+        generated=[10, 11, 12, 20, 21, 2],
+        prompt_token_count=3,
+        eos_id=2,
+    ) == "2021"

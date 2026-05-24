@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from protonx.model_contract import normalize_dataset_row
 from protonx.model_contract import serialize_compact_prompt
@@ -43,3 +44,15 @@ def serialize_training_record(record: dict) -> str:
 
 def serialize_inference_prompt(prompt: dict) -> str:
     return serialize_compact_prompt(prompt["tools"], prompt["user"])
+
+
+def decode_generated_continuation(
+    tokenizer: Any,
+    generated: list[int],
+    prompt_token_count: int,
+    eos_id: int,
+) -> str:
+    continuation = generated[prompt_token_count:]
+    if continuation and continuation[-1] == eos_id:
+        continuation = continuation[:-1]
+    return tokenizer.decode(continuation).strip()
