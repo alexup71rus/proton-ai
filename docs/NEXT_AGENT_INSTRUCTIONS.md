@@ -61,7 +61,7 @@ Proton-X v1 сейчас должен быть маленькой generative too
 
 ## Рабочая зона параметров
 
-Текущий production artifact после fresh run:
+Текущий production artifact после fresh run на предыдущем `10k` dataset:
 
 ```text
 model_path: data/weights/proton_router_v1.pt
@@ -170,31 +170,34 @@ cd /Users/aleksandr/Documents/Projects/proton-x
 Текущий dataset:
 
 - Файл: [data/train/routing/routing.jsonl](../data/train/routing/routing.jsonl)
-- Размер: 10000 rows
+- Размер: 15000 rows
 - Классы: 26, включая `__fallback__`
+- Unique prompt contracts (`tools + user`): 15000
+- Unique user texts: 13882. Это нормально: один и тот же user intent может иметь разные targets при разных `available_tools`.
 - Формат строки: `tools`, `user`, `assistant`
 - `assistant` содержит целевой JSON `tool_calls`
 - Training loss считается только на assistant continuation; prompt tokens masked через `IGNORE_INDEX`
 - Все `user` тексты в текущем dataset RU-only.
 - В каждой строке свой subset registry: target tool плюс разные decoy tools и fallback.
+- Добавлены hard negatives: git/docker/system запросы, где соответствующей семьи tools нет в `available_tools`, и target должен быть `__fallback__`.
 
 Распределение классов на момент handoff:
 
 ```text
-__fallback__: 865
-остальные target classes: 365-366 rows на класс
+__fallback__: 3601
+остальные target classes: 455-456 rows на класс
 ```
 
 Распределение количества tools в prompt:
 
 ```text
-7 tools: 708 rows
-8 tools: 1283 rows
-9 tools: 2009 rows
-10 tools: 1997 rows
-11 tools: 1980 rows
-12 tools: 1345 rows
-13 tools: 678 rows
+7 tools: 975 rows
+8 tools: 1958 rows
+9 tools: 3090 rows
+10 tools: 2970 rows
+11 tools: 2955 rows
+12 tools: 2028 rows
+13 tools: 1024 rows
 ```
 
 Seed/mixer:
@@ -210,7 +213,7 @@ PYTHONPATH=service /usr/local/Cellar/python@3.11/3.11.13/bin/python3.11 \
   -m protonx.training.bootstrap_dataset_mixer_for_tools \
   --tools data/tools/tools.json \
   --output data/train/routing/routing.jsonl \
-  --target-rows 10000
+  --target-rows 15000
 ```
 
 ## Почему старый eval убрали из critical path
@@ -313,9 +316,9 @@ evaluation.mode: unique_holdout
 
 1. Улучшать generative JSON, а не скрывать его ошибки runtime-слоем.
 2. Проверить, хватает ли текущего prompt contract для аргументов и будущих chain calls.
-3. Усилить dataset hard negatives для fallback и убрать оставшийся `unknown_tool` на eval.
-4. Усилить близкие positives/negatives по семействам Docker/Git/System, где tool names похожи по смыслу.
-5. Если параметры крутить, стартовать от рабочей зоны `256/4/8`, batch 8, lr 0.0005, epochs 3, vocab 2048.
+3. Следующий training запускать fresh на текущем `15k` dataset: `256/4/8`, batch 8, lr 0.0005, epochs 3, vocab 2048.
+4. Особо проверить fallback на сценариях: “git/docker/system intent есть в тексте, но соответствующих tools нет в registry”.
+5. Если positive tool-call качество просядет из-за fallback, снижать `fallback_ratio`; если fallback всё ещё плохой, расширять hard negatives, а не чинить runtime.
 6. Эпохи повышать только если eval/smoke показывают недообучение; низкий loss сам по себе не причина продолжать.
 7. Не принимать качество только по loss: смотреть short unique holdout, smoke и raw debug outputs.
 

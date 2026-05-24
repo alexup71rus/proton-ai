@@ -28,8 +28,43 @@ SPECIAL_HOLDOUT_REQUESTS: dict[str, list[str]] = {
     FALLBACK_TOOL_NAME: [
         "закажи такси до аэропорта",
         "напиши короткое стихотворение о дожде",
+        "запусти тесты в проекте",
+        "почини ошибку в приложении",
     ],
 }
+
+UNAVAILABLE_HOLDOUT_SCENARIOS: list[dict[str, Any]] = [
+    {
+        "tool_names": {
+            "git_status",
+            "git_diff",
+            "git_log",
+            "git_pull",
+            "git_branch",
+            "git_checkout_branch",
+            "git_stash_changes",
+        },
+        "requests": [
+            "проверь git status без git инструментов",
+            "покажи diff репозитория когда git недоступен",
+        ],
+    },
+    {
+        "tool_names": {
+            "docker_list_containers",
+            "docker_show_logs",
+            "docker_restart_container",
+            "docker_build_image",
+            "docker_compose_up",
+            "docker_stop_container",
+            "docker_pull_image",
+        },
+        "requests": [
+            "покажи docker ps когда docker tool отсутствует",
+            "перезапусти docker контейнер без docker инструмента",
+        ],
+    },
+]
 
 
 def _normalize_user_text(value: str) -> str:
@@ -165,6 +200,42 @@ def build_unique_holdout_rows(records: list[dict[str, Any]]) -> list[dict[str, A
                             {
                                 "name": tool_name,
                                 "arguments": expected_arguments,
+                            }
+                        ]
+                    },
+                }
+            )
+
+    available_tool_names = {str(tool.get("name") or "") for tool in tools}
+    for scenario in UNAVAILABLE_HOLDOUT_SCENARIOS:
+        unavailable_names = {
+            str(name)
+            for name in scenario.get("tool_names", set())
+            if str(name)
+        }
+        if not (available_tool_names & unavailable_names):
+            continue
+        row_tools = [
+            tool
+            for tool in tools
+            if str(tool.get("name") or "") not in unavailable_names
+        ]
+        if not any(str(tool.get("name") or "") == FALLBACK_TOOL_NAME for tool in row_tools):
+            continue
+        for request in scenario.get("requests", []):
+            normalized_request = _normalize_user_text(str(request))
+            if normalized_request in seen_users or normalized_request in used_users:
+                continue
+            used_users.add(normalized_request)
+            rows.append(
+                {
+                    "tools": row_tools,
+                    "user": str(request),
+                    "assistant": {
+                        "tool_calls": [
+                            {
+                                "name": FALLBACK_TOOL_NAME,
+                                "arguments": {},
                             }
                         ]
                     },

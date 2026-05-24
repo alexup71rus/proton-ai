@@ -491,6 +491,62 @@ def _seed_fallback_requests(seed: dict[str, Any]) -> list[str]:
     return _expand_ru_requests(_dedupe_texts([*raw_requests, *requests]), seed)
 
 
+def _seed_unavailable_intent_examples(
+    tools: list[ToolDefinition], seed: dict[str, Any] | None = None
+) -> list[dict]:
+    seed = seed or {}
+    raw_intents = seed.get("unavailable_intents") or []
+    if not isinstance(raw_intents, list):
+        return []
+
+    punctuation_values = seed.get("punctuation") or ["", "?"]
+    case_variants = seed.get("case_variants") or ["as_is"]
+    if not isinstance(punctuation_values, list):
+        punctuation_values = [""]
+    if not isinstance(case_variants, list):
+        case_variants = ["as_is"]
+
+    tool_payloads = [compact_tool_from_definition(tool) for tool in tools]
+    rows: list[dict] = []
+    for raw_intent in raw_intents:
+        if not isinstance(raw_intent, dict):
+            continue
+        unavailable_names = {
+            str(name)
+            for name in raw_intent.get("tool_names") or []
+            if str(name).strip()
+        }
+        if not unavailable_names:
+            continue
+        available_payloads = [
+            tool_payload
+            for tool_payload in tool_payloads
+            if str(tool_payload.get("name") or "") not in unavailable_names
+        ]
+        if not available_payloads:
+            continue
+
+        raw_requests = raw_intent.get("requests") or []
+        if not isinstance(raw_requests, list):
+            continue
+        requests: list[str] = []
+        for request in raw_requests:
+            if not _is_allowed_language_text(str(request), _target_languages(seed)):
+                continue
+            requests.extend(
+                _render_request_variants(
+                    str(request),
+                    ["{phrase}"],
+                    [str(value) for value in punctuation_values],
+                    [str(value) for value in case_variants],
+                )
+            )
+        requests = _expand_ru_requests(_dedupe_texts(requests), seed)
+        for request in requests:
+            rows.append(_fallback_row(available_payloads, request, seed))
+    return rows
+
+
 def _seed_decoy_tools(seed: dict[str, Any]) -> list[dict[str, Any]]:
     raw_decoys = seed.get("decoy_tools") or []
     if not isinstance(raw_decoys, list):
@@ -893,6 +949,7 @@ def build_examples(tools: list[ToolDefinition], target_rows: int | None = None) 
         fallback_payloads = [compact_tool_from_definition(tool) for tool in tools]
         for user_text in _seed_fallback_requests(seed):
             special_rows.append(_fallback_row(fallback_payloads, user_text, seed))
+        special_rows.extend(_seed_unavailable_intent_examples(tools, seed))
     tool_rows.extend(_argument_probe_examples(tools, seed))
     tool_rows = _dedupe_rows_by_user(tool_rows)
     special_rows = _dedupe_rows_by_user(special_rows)

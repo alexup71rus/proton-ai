@@ -34,3 +34,48 @@ def test_build_unique_holdout_rows_uses_only_unseen_requests() -> None:
     }
     seen_users = {record["user"].strip().lower() for record in records}
     assert all(row["user"].strip().lower() not in seen_users for row in rows)
+
+
+def test_build_unique_holdout_rows_include_unavailable_tool_family_fallbacks() -> None:
+    records = [
+        {
+            "tools": [
+                {"name": "git_status", "tags": ["статус git"]},
+                {"name": "get_node_version", "tags": ["версия node"]},
+                {"name": "__fallback__", "tags": ["fallback"]},
+            ],
+            "user": "покажи статус git",
+            "assistant": {"tool_calls": [{"name": "git_status", "arguments": {}}]},
+        },
+        {
+            "tools": [
+                {"name": "docker_list_containers", "tags": ["контейнеры docker"]},
+                {"name": "get_node_version", "tags": ["версия node"]},
+                {"name": "__fallback__", "tags": ["fallback"]},
+            ],
+            "user": "покажи контейнеры docker",
+            "assistant": {"tool_calls": [{"name": "docker_list_containers", "arguments": {}}]},
+        },
+    ]
+
+    rows = build_unique_holdout_rows(records)
+    fallback_rows = [
+        row
+        for row in rows
+        if row["assistant"]["tool_calls"][0]["name"] == "__fallback__"
+    ]
+    git_unavailable = [
+        row
+        for row in fallback_rows
+        if "git" in row["user"].lower()
+        and all(not tool["name"].startswith("git_") for tool in row["tools"])
+    ]
+    docker_unavailable = [
+        row
+        for row in fallback_rows
+        if "docker" in row["user"].lower()
+        and all(not tool["name"].startswith("docker_") for tool in row["tools"])
+    ]
+
+    assert git_unavailable
+    assert docker_unavailable

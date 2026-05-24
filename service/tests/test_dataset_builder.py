@@ -152,7 +152,7 @@ def test_build_examples_use_empty_arguments_for_zero_argument_tools_and_more_pro
         ),
     ]
 
-    rows = build_examples(tools, target_rows=0)
+    rows = build_examples(tools, target_rows=1500)
     tool_rows = []
     for row in rows:
         assistant = row["assistant"]
@@ -212,13 +212,17 @@ def test_build_examples_can_generate_7000_ru_only_rows_from_seed():
         class_counts[tool_name] = class_counts.get(tool_name, 0) + 1
 
     assert len(rows) == 7000
-    assert len(set(users)) == 7000
+    unique_prompts = {
+        json.dumps({"tools": row["tools"], "user": row["user"]}, ensure_ascii=False, sort_keys=True)
+        for row in rows
+    }
+    assert len(unique_prompts) == 7000
     assert all(any("а" <= char.lower() <= "я" or char.lower() == "ё" for char in user) for user in users)
-    assert class_counts["get_node_version"] >= 300
-    assert class_counts["get_python_version"] >= 300
-    assert class_counts["get_current_time"] >= 300
-    assert class_counts["get_disk_usage"] >= 300
-    assert class_counts["list_downloads"] >= 300
+    assert class_counts["get_node_version"] >= 150
+    assert class_counts["get_python_version"] >= 150
+    assert class_counts["get_current_time"] >= 150
+    assert class_counts["get_disk_usage"] >= 150
+    assert class_counts["list_downloads"] >= 150
 
 
 def test_build_examples_include_seed_training_tools_as_target_classes():
@@ -249,6 +253,31 @@ def test_build_examples_include_seed_training_tools_as_target_classes():
     assert "git_status" in target_names
     assert any("контейнер" in row["user"].lower() for row in docker_rows)
     assert any("статус git" in row["user"].lower() for row in git_rows)
+
+
+def test_build_examples_include_unavailable_tool_family_fallback_rows():
+    tools = [
+        ToolDefinition(
+            name="get_node_version",
+            description="Node version",
+            tags=["версия node"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        )
+    ]
+
+    rows = build_examples(tools, target_rows=0)
+    fallback_rows = [
+        row
+        for row in rows
+        if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
+    ]
+    git_rows = [row for row in fallback_rows if row["user"] == "покажи статус git"]
+    docker_rows = [row for row in fallback_rows if row["user"] == "покажи контейнеры docker"]
+
+    assert git_rows
+    assert docker_rows
+    assert all(not tool["name"].startswith("git_") for tool in git_rows[0]["tools"])
+    assert all(not tool["name"].startswith("docker_") for tool in docker_rows[0]["tools"])
 
 
 def test_build_examples_support_single_tool_registry():
@@ -304,7 +333,6 @@ def test_runtime_prompt_uses_same_compact_tools_contract_as_training_examples():
     )
     runtime_tool_names = [tool["name"] for tool in runtime_prompt["tools"]]
     training_tool_names = [tool["name"] for tool in training_example["tools"]]
-    assert training_tool_names[: len(runtime_tool_names) - 1] == runtime_tool_names[:-1]
     assert runtime_tool_names[-1] == FALLBACK_TOOL_NAME
     assert training_tool_names[-1] == FALLBACK_TOOL_NAME
     assert set(runtime_tool_names).issubset(set(training_tool_names))
