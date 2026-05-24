@@ -4,6 +4,8 @@
 
 ## Что сейчас есть
 
+Подробно про внутреннее устройство LLM-сервиса: [service/README.md](service/README.md)
+
 Текущий `v1` построен вокруг сценария:
 
 - создать tools registry
@@ -49,20 +51,20 @@ proton-x/
 └── README.md
 ```
 
-## UI flow
+## Интерфейс
 
-Новый интерфейс построен вокруг 4 экранов:
+Интерфейс состоит из четырёх основных экранов:
 
-- **Tools** — file-backed editor для registry tools
-- **Dataset + Training** — генерация датасета, импорт/экспорт, запуск обучения и прогресс
-- **Test** — основной экран проверки запроса и debug pipeline
-- **Logs** — человекочитаемые fallback/error cases
+- **Tools** — редактор файла с реестром инструментов
+- **Dataset + Training** — генерация датасета, импорт и экспорт, запуск обучения и отображение прогресса
+- **Test** — основной экран для проверки запросов и просмотра отладочного пайплайна
+- **Logs** — просмотр fallback- и error-case сценариев в читаемом виде
 
-Архитектура UI теперь такая:
+Роли компонентов распределены следующим образом:
 
 - `web_ui` — SPA на React/Vite
-- `web_backend` — BFF, который работает с файлами и проксирует runtime/training вызовы в `service`
-- `service` — source of truth для routing, preview, dataset build и training runtime
+- `web_backend` — BFF-слой, который работает с файлами и проксирует runtime- и training-запросы в `service`
+- `service` — основной сервис для routing, preview, сборки датасета и training runtime
 
 ## Tools registry
 

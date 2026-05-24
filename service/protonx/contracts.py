@@ -1,22 +1,10 @@
-FALLBACK_MESSAGE = (
-    "I work only with available tools."
-)
+from protonx.model_contract import FALLBACK_MESSAGE
+from protonx.model_contract import build_fallback_payload
+from protonx.model_contract import build_fallback_response
 
 
-def build_system_contract(answer_allowed: bool) -> dict:
-    return {
-        "answer_allowed": answer_allowed,
-        "fallback_message": FALLBACK_MESSAGE,
-        "instruction": "Choose only from candidate tools. Return JSON. Use fallback when unsure.",
-    }
-
-
-def build_fallback_payload(answer_allowed: bool) -> dict:
-    payload = {
-        "tool_calls": [],
-        "answer": answer_allowed,
-        "fallback": True,
-    }
-    if answer_allowed:
-        payload["response"] = FALLBACK_MESSAGE
-    return payload
+__all__ = [
+    "FALLBACK_MESSAGE",
+    "build_fallback_payload",
+    "build_fallback_response",
+]

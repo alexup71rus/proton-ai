@@ -2,7 +2,6 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from protonx.contracts import build_fallback_payload
 from protonx.schemas import ToolDefinition
 
 
@@ -63,20 +62,11 @@ def validate_model_output(
             return ValidationResult(
                 False, payload, "fallback cannot include tool calls", "fallback"
             )
-        expected = build_fallback_payload(answer_allowed)
-        if payload.get("answer") != expected["answer"]:
-            return ValidationResult(
-                False, payload, "answer flag violates answer_allowed", "fallback"
-            )
-        if answer_allowed and not isinstance(payload.get("response"), str):
-            return ValidationResult(
-                False, payload, "fallback response is invalid", "fallback"
-            )
         return ValidationResult(True, payload, None, "fallback")
 
-    if payload["answer"] is True and answer_allowed is False:
+    if payload["answer"] is True:
         return ValidationResult(
-            False, payload, "answer flag violates answer_allowed", "fallback"
+            False, payload, "answer-only responses must use fallback", "fallback"
         )
     if payload["tool_calls"] == []:
         return ValidationResult(

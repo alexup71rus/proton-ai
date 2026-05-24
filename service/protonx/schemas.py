@@ -36,6 +36,7 @@ class RoutePreviewRequest(BaseModel):
 class RoutePreviewResponse(BaseModel):
     user_text: str
     candidate_tools: list[str]
+    serialized_prompt: str
     model_output: str
     repaired_output: str | None
     validation_error: str | None

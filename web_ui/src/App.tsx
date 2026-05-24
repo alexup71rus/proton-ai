@@ -18,7 +18,7 @@ const navItems = [
     to: "/dataset-training",
     label: "Dataset + Training",
     step: "02",
-    description: "Prepare data and watch the run like a real workflow.",
+    description: "Manage dataset assets, then train from a validated file.",
   },
   {
     to: "/test",

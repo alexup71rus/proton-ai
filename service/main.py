@@ -71,10 +71,13 @@ def train_status() -> dict:
 
 @app.post("/train/start")
 def train_start(payload: TrainStartRequest) -> dict:
-    return start_training_job(
-        dataset_path=Path(payload.dataset_path),
-        epochs=payload.epochs,
-        batch_size=payload.batch_size,
-        model_name=payload.model_name,
-        tokenizer_name=payload.tokenizer_name,
-    )
+    try:
+        return start_training_job(
+            dataset_path=Path(payload.dataset_path),
+            epochs=payload.epochs,
+            batch_size=payload.batch_size,
+            model_name=payload.model_name,
+            tokenizer_name=payload.tokenizer_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

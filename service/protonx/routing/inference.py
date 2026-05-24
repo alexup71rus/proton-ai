@@ -10,6 +10,7 @@ from protonx.routing.prompt import build_routing_prompt
 from protonx.routing.repair import repair_json_syntax
 from protonx.routing.validate import validate_model_output
 from protonx.schemas import RoutePreviewRequest, RoutePreviewResponse
+from protonx.training.format import serialize_inference_prompt
 
 
 MODEL_RUNTIME = ModelRuntime(
@@ -21,6 +22,7 @@ MODEL_RUNTIME = ModelRuntime(
 @dataclass
 class RoutingDecision:
     candidate_tools: list[str]
+    serialized_prompt: str
     model_output: str
     repaired_output: str | None
     validation_error: str | None
@@ -38,6 +40,7 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
     if not candidates:
         return RoutingDecision(
             candidate_tools=[],
+            serialized_prompt="",
             model_output="",
             repaired_output=None,
             validation_error=None,
@@ -52,6 +55,7 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
         if top_score > 0 and (top_score - second_score) <= 0:
             return RoutingDecision(
                 candidate_tools=[tool.name for tool in candidates],
+                serialized_prompt="",
                 model_output="",
                 repaired_output=None,
                 validation_error="low confidence candidate match",
@@ -68,6 +72,7 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
     prompt = build_routing_prompt(
         payload.user_text, candidates, payload.answer_allowed
     )
+    serialized_prompt = serialize_inference_prompt(prompt)
     model_output = MODEL_RUNTIME.generate(prompt)
     repaired_output = repair_json_syntax(model_output)
     validation = validate_model_output(
@@ -91,13 +96,15 @@ def run_route(payload: RoutePreviewRequest) -> RoutingDecision:
     if validation.final_action == "fallback" and repaired_output is None:
         repaired_output = model_output
 
-    final_output = (
-        validation.parsed_output
-        if validation.valid and validation.parsed_output is not None
-        else build_fallback_payload(payload.answer_allowed)
-    )
+    if validation.final_action == "fallback":
+        final_output = build_fallback_payload(payload.answer_allowed)
+    elif validation.valid and validation.parsed_output is not None:
+        final_output = validation.parsed_output
+    else:
+        final_output = build_fallback_payload(payload.answer_allowed)
     return RoutingDecision(
         candidate_tools=[tool.name for tool in candidates],
+        serialized_prompt=serialized_prompt,
         model_output=model_output,
         repaired_output=repaired_output,
         validation_error=validation.error,
@@ -117,6 +124,7 @@ def preview_route(payload: RoutePreviewRequest) -> RoutePreviewResponse:
     return RoutePreviewResponse(
         user_text=payload.user_text,
         candidate_tools=decision.candidate_tools,
+        serialized_prompt=decision.serialized_prompt,
         model_output=decision.model_output,
         repaired_output=decision.repaired_output,
         validation_error=decision.validation_error,

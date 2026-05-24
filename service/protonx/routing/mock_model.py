@@ -8,7 +8,6 @@ def generate_mock_output(prompt: dict) -> str:
             {
                 "tool_calls": [],
                 "answer": True,
-                "response": "I work only with available tools.",
                 "fallback": True,
             }
         )
@@ -23,5 +22,6 @@ def generate_mock_output(prompt: dict) -> str:
         {
             "tool_calls": [{"name": first_tool["name"], "arguments": arguments}],
             "answer": False,
+            "fallback": False,
         }
     )

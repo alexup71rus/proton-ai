@@ -57,6 +57,8 @@ def test_route_preview_returns_full_pipeline_fields(monkeypatch):
     assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "tool_call"
     assert payload["validation_error"] is None
+    assert payload["serialized_prompt"].startswith("TOOLS:\n")
+    assert "USER:\nturn on the lamp\nOUTPUT:\n" in payload["serialized_prompt"]
 
 
 def test_route_preview_falls_back_on_ambiguous_candidates_without_calling_model(monkeypatch):

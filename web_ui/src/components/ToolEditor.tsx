@@ -127,6 +127,17 @@ export function ToolEditor({
           />
         </label>
 
+        <label className="field field--wide">
+          <span>Executor script</span>
+          <input
+            className="input"
+            type="text"
+            value={tool.executor_path}
+            onChange={(event) => onChange({ ...tool, executor_path: event.target.value })}
+            placeholder="web_backend/executors/get_current_time.py"
+          />
+        </label>
+
         <div className="field field--wide">
           <span>Tags</span>
           <div className="chips-wrap">

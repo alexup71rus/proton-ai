@@ -5,6 +5,15 @@ from pathlib import Path
 import web_backend.app as app_module
 
 
+def _valid_dataset_line() -> str:
+    return (
+        '{"tools":[{"name":"light","tags":["light"]}],'
+        '"user":"show me light",'
+        '"assistant":{"tool_calls":[{"name":"light","arguments":{}}],"answer":false,"fallback":false}}'
+        '\n'
+    )
+
+
 def test_get_training_status_returns_ui_friendly_shape(monkeypatch, client) -> None:
     monkeypatch.setattr(
         app_module.service_client,
@@ -29,7 +38,7 @@ def test_get_training_status_returns_ui_friendly_shape(monkeypatch, client) -> N
 def test_post_training_start_forwards_config(tmp_path: Path, monkeypatch, client) -> None:
     monkeypatch.setenv("PROTONX_DATASET_DIR", str(tmp_path))
     dataset_path = tmp_path / "routing.jsonl"
-    dataset_path.write_text('{"x":1}\n', encoding="utf-8")
+    dataset_path.write_text(_valid_dataset_line(), encoding="utf-8")
     captured: dict[str, object] = {}
 
     def fake_post_json(path: str, payload: dict) -> dict:
@@ -64,7 +73,7 @@ def test_post_training_start_forwards_config(tmp_path: Path, monkeypatch, client
 def test_post_training_start_normalizes_partial_service_payload(tmp_path: Path, monkeypatch, client) -> None:
     monkeypatch.setenv("PROTONX_DATASET_DIR", str(tmp_path))
     dataset_path = tmp_path / "routing.jsonl"
-    dataset_path.write_text('{"x":1}\n', encoding="utf-8")
+    dataset_path.write_text(_valid_dataset_line(), encoding="utf-8")
 
     monkeypatch.setattr(
         app_module.service_client,
@@ -89,3 +98,23 @@ def test_post_training_start_normalizes_partial_service_payload(tmp_path: Path, 
     assert payload["current_epoch"] == 1
     assert payload["loss_history"] == []
     assert payload["metrics"] == {}
+
+
+def test_post_training_start_rejects_invalid_dataset(tmp_path: Path, monkeypatch, client) -> None:
+    monkeypatch.setenv("PROTONX_DATASET_DIR", str(tmp_path))
+    dataset_path = tmp_path / "routing.jsonl"
+    dataset_path.write_text('{"x":1}\n', encoding="utf-8")
+
+    response = client.post(
+        "/api/training/start",
+        json={
+            "dataset_name": "routing.jsonl",
+            "epochs": 1,
+            "batch_size": 1,
+            "model_name": "tiny-router",
+            "tokenizer_name": "sentencepiece-bpe",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Dataset validation failed" in response.json()["detail"]

@@ -38,7 +38,7 @@ def test_train_start_accepts_config_and_eventually_completes(tmp_path):
     TRAINING_STATE.reset()
     dataset_path = tmp_path / "routing.jsonl"
     dataset_path.write_text(
-        '{"system":{"answer_allowed":false,"fallback_message":"fallback","instruction":"choose"},"tools":[],"messages":[{"role":"user","content":"turn on the lamp"},{"role":"assistant","content":"{\\"tool_calls\\":[],\\"answer\\":false,\\"fallback\\":true}"}]}\n',
+        '{"tools":[],"user":"turn on the lamp","assistant":{"tool_calls":[],"answer":true,"fallback":true}}\n',
         encoding="utf-8",
     )
     response = client.post(
@@ -68,3 +68,26 @@ def test_train_start_accepts_config_and_eventually_completes(tmp_path):
     assert final_payload["tokenizer_path"].endswith(".model")
     assert final_payload["model_name"] == "tiny-router"
     assert isinstance(final_payload["loss_history"], list)
+
+
+def test_train_start_rejects_invalid_dataset_before_training(tmp_path):
+    TRAINING_STATE.reset()
+    dataset_path = tmp_path / "routing.jsonl"
+    dataset_path.write_text(
+        '{"tools":[{"name":"light","tags":["light"]}],"user":"turn on the lamp","assistant":{"tool_calls":[{"name":"lamp","arguments":{}}],"answer":false,"fallback":false}}\n',
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        "/train/start",
+        json={
+            "dataset_path": str(dataset_path),
+            "epochs": 1,
+            "batch_size": 1,
+            "model_name": "tiny-router",
+            "tokenizer_name": "sentencepiece-bpe",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Dataset validation failed" in response.json()["detail"]

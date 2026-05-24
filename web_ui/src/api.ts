@@ -3,6 +3,7 @@ export interface ToolDefinition {
   description: string;
   tags: string[];
   arguments_schema: Record<string, unknown>;
+  executor_path: string;
 }
 
 
@@ -28,6 +29,10 @@ export interface DatasetSummary {
   name: string;
   size_bytes: number;
   updated_at: string;
+  row_count: number;
+  validation_status: "valid" | "invalid";
+  issue_count: number;
+  source: "imported" | "tools_bootstrap" | "manual" | "logs_draft";
 }
 
 
@@ -36,8 +41,60 @@ export interface DatasetsResponse {
 }
 
 
-export interface GenerateDatasetResponse {
-  generated: boolean;
+export interface DatasetValidationIssue {
+  line_number: number;
+  message: string;
+}
+
+
+export interface DatasetValidationReport {
+  status: "valid" | "invalid";
+  row_count: number;
+  issue_count: number;
+  issues: DatasetValidationIssue[];
+}
+
+
+export interface DatasetPreviewLine {
+  line_number: number;
+  raw: string;
+}
+
+
+export interface DatasetDetailResponse {
+  dataset: DatasetSummary;
+  preview_lines: DatasetPreviewLine[];
+  validation: DatasetValidationReport;
+}
+
+
+export interface DatasetBootstrapResponse {
+  bootstrapped: boolean;
+  rows_written: number;
+  dataset: DatasetSummary;
+}
+
+
+export interface DatasetMutationResponse {
+  saved: boolean;
+  dataset: DatasetSummary;
+}
+
+
+export interface DatasetDuplicateResponse {
+  duplicated: boolean;
+  dataset: DatasetSummary;
+}
+
+
+export interface DatasetDeleteResponse {
+  deleted: boolean;
+  name: string;
+}
+
+
+export interface LogsExportResponse {
+  exported: boolean;
   rows_written: number;
   dataset: DatasetSummary;
 }
@@ -77,9 +134,16 @@ export interface TestResponse {
     tool_name: string | null;
     arguments: Record<string, unknown> | null;
     response: string | null;
+    execution: {
+      status: string;
+      tool_name: string | null;
+      output: unknown | null;
+      error: string | null;
+    } | null;
   };
   debug: {
     candidate_tools: string[];
+    serialized_prompt: string;
     raw_model_output: string;
     repaired_output: string | null;
     validator_result: Record<string, unknown>;
@@ -181,9 +245,52 @@ export async function importDataset(file: File): Promise<{ imported: boolean; da
 }
 
 
-export async function generateDataset(): Promise<GenerateDatasetResponse> {
-  return request<GenerateDatasetResponse>("/api/datasets/generate", {
+export async function bootstrapDataset(datasetName: string): Promise<DatasetBootstrapResponse> {
+  return request<DatasetBootstrapResponse>("/api/datasets/bootstrap", {
     method: "POST",
+    body: JSON.stringify({ dataset_name: datasetName }),
+  });
+}
+
+
+export async function createManualDataset(datasetName: string, content: string): Promise<DatasetMutationResponse> {
+  return request<DatasetMutationResponse>("/api/datasets/manual", {
+    method: "POST",
+    body: JSON.stringify({ dataset_name: datasetName, content }),
+  });
+}
+
+
+export async function fetchDatasetDetails(datasetName: string, limit = 8): Promise<DatasetDetailResponse> {
+  return request<DatasetDetailResponse>(`/api/datasets/${encodeURIComponent(datasetName)}/preview?limit=${limit}`);
+}
+
+
+export async function validateDataset(datasetName: string): Promise<DatasetValidationReport> {
+  return request<DatasetValidationReport>(`/api/datasets/${encodeURIComponent(datasetName)}/validate`, {
+    method: "POST",
+  });
+}
+
+
+export async function appendDatasetRows(datasetName: string, content: string): Promise<DatasetMutationResponse> {
+  return request<DatasetMutationResponse>(`/api/datasets/${encodeURIComponent(datasetName)}/append`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+
+export async function duplicateDataset(datasetName: string): Promise<DatasetDuplicateResponse> {
+  return request<DatasetDuplicateResponse>(`/api/datasets/${encodeURIComponent(datasetName)}/duplicate`, {
+    method: "POST",
+  });
+}
+
+
+export async function deleteDataset(datasetName: string): Promise<DatasetDeleteResponse> {
+  return request<DatasetDeleteResponse>(`/api/datasets/${encodeURIComponent(datasetName)}`, {
+    method: "DELETE",
   });
 }
 
@@ -216,4 +323,11 @@ export async function runTest(userText: string, answerAllowed = false): Promise<
 
 export async function fetchLogs(): Promise<LogsResponse> {
   return request<LogsResponse>("/api/logs");
+}
+
+
+export async function exportFailedCases(): Promise<LogsExportResponse> {
+  return request<LogsExportResponse>("/api/logs/export-failed-cases", {
+    method: "POST",
+  });
 }

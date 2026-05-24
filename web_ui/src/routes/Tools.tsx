@@ -16,6 +16,7 @@ function blankTool(nextIndex: number): ToolDefinition {
     name: `tool_${nextIndex + 1}`,
     description: "",
     tags: [],
+    executor_path: "",
     arguments_schema: {
       type: "object",
       properties: {},

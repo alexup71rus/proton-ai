@@ -28,7 +28,7 @@ def test_validator_accepts_fallback_payload():
     tools = []
     result = validate_model_output(
         candidate_tools=tools,
-        raw_output='{"tool_calls":[],"answer":true,"response":"fallback","fallback":true}',
+        raw_output='{"tool_calls":[],"answer":true,"fallback":true}',
         answer_allowed=True,
     )
     assert result.valid is True

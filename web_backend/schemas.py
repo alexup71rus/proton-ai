@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,7 @@ class ToolDefinition(BaseModel):
     description: str = ""
     tags: list[str] = Field(default_factory=list)
     arguments_schema: dict[str, Any] = Field(default_factory=_default_schema)
+    executor_path: str = ""
 
 
 class ToolsPayload(BaseModel):
@@ -47,10 +48,37 @@ class DatasetSummary(BaseModel):
     name: str
     size_bytes: int
     updated_at: str
+    row_count: int = 0
+    validation_status: Literal["valid", "invalid"] = "invalid"
+    issue_count: int = 0
+    source: Literal["imported", "tools_bootstrap", "manual", "logs_draft"] = "imported"
 
 
 class DatasetsResponse(BaseModel):
     datasets: list[DatasetSummary] = Field(default_factory=list)
+
+
+class DatasetValidationIssue(BaseModel):
+    line_number: int
+    message: str
+
+
+class DatasetValidationReport(BaseModel):
+    status: Literal["valid", "invalid"] = "invalid"
+    row_count: int = 0
+    issue_count: int = 0
+    issues: list[DatasetValidationIssue] = Field(default_factory=list)
+
+
+class DatasetPreviewLine(BaseModel):
+    line_number: int
+    raw: str
+
+
+class DatasetDetailResponse(BaseModel):
+    dataset: DatasetSummary
+    preview_lines: list[DatasetPreviewLine] = Field(default_factory=list)
+    validation: DatasetValidationReport
 
 
 class ImportDatasetResponse(BaseModel):
@@ -58,8 +86,42 @@ class ImportDatasetResponse(BaseModel):
     dataset: DatasetSummary
 
 
-class GenerateDatasetResponse(BaseModel):
-    generated: bool = True
+class DatasetBootstrapPayload(BaseModel):
+    dataset_name: str = "routing.jsonl"
+
+
+class DatasetCreatePayload(BaseModel):
+    dataset_name: str
+    content: str
+
+
+class DatasetAppendPayload(BaseModel):
+    content: str
+
+
+class DatasetMutationResponse(BaseModel):
+    saved: bool = True
+    dataset: DatasetSummary
+
+
+class DatasetDuplicateResponse(BaseModel):
+    duplicated: bool = True
+    dataset: DatasetSummary
+
+
+class DatasetDeleteResponse(BaseModel):
+    deleted: bool = True
+    name: str
+
+
+class DatasetBootstrapResponse(BaseModel):
+    bootstrapped: bool = True
+    rows_written: int
+    dataset: DatasetSummary
+
+
+class LogsExportResponse(BaseModel):
+    exported: bool = True
     rows_written: int
     dataset: DatasetSummary
 
@@ -95,15 +157,24 @@ class TestPayload(BaseModel):
     answer_allowed: bool = False
 
 
+class ToolExecutionPayload(BaseModel):
+    status: str
+    tool_name: str | None = None
+    output: Any | None = None
+    error: str | None = None
+
+
 class TestResultPayload(BaseModel):
     status: str
     tool_name: str | None = None
     arguments: dict[str, Any] | None = None
     response: str | None = None
+    execution: ToolExecutionPayload | None = None
 
 
 class TestDebugPayload(BaseModel):
     candidate_tools: list[str] = Field(default_factory=list)
+    serialized_prompt: str = ""
     raw_model_output: str = ""
     repaired_output: str | None = None
     validator_result: dict[str, Any] = Field(default_factory=dict)

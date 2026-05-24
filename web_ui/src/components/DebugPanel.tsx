@@ -38,6 +38,11 @@ export function DebugPanel({ debug }: DebugPanelProps) {
         </div>
 
         <div className="panel panel--soft debug-card debug-card--wide">
+          <strong>Serialized prompt</strong>
+          <pre>{debug.serialized_prompt || "-"}</pre>
+        </div>
+
+        <div className="panel panel--soft debug-card debug-card--wide">
           <strong>Raw model output</strong>
           <pre>{debug.raw_model_output || "-"}</pre>
         </div>

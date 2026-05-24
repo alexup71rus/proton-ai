@@ -25,6 +25,7 @@ export function TestRoute() {
   }
 
   const isFallback = result?.result.status === "fallback";
+  const execution = result?.result.execution;
 
   return (
     <section className="page">
@@ -94,16 +95,25 @@ export function TestRoute() {
           </div>
 
           {result.result.tool_name ? (
-            <div className="result-card__grid">
-              <div>
-                <span>Tool</span>
-                <strong>{result.result.tool_name}</strong>
+            <>
+              <div className="result-card__grid">
+                <div>
+                  <span>Tool</span>
+                  <strong>{result.result.tool_name}</strong>
+                </div>
+                <div>
+                  <span>Arguments</span>
+                  <pre>{JSON.stringify(result.result.arguments, null, 2)}</pre>
+                </div>
               </div>
-              <div>
-                <span>Arguments</span>
-                <pre>{JSON.stringify(result.result.arguments, null, 2)}</pre>
-              </div>
-            </div>
+              {execution ? (
+                <div className={`feedback feedback--${execution.error ? "error" : "info"}`}>
+                  <strong>{execution.error ? "Execution failed" : "Execution output"}</strong>
+                  {execution.error ? <p>{execution.error}</p> : null}
+                  {execution.output !== null ? <pre>{JSON.stringify(execution.output, null, 2)}</pre> : null}
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="empty-state empty-state--compact">
               <p>{result.result.response || "The router fell back instead of selecting a tool."}</p>

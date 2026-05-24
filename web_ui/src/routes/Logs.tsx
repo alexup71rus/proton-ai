@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { fetchLogs, type LogRow } from "../api";
+import { exportFailedCases, fetchLogs, type LogRow } from "../api";
 import { LogCard } from "../components/LogCard";
 
 
@@ -8,6 +8,8 @@ export function LogsRoute() {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   async function loadRows() {
     setState("loading");
@@ -26,6 +28,19 @@ export function LogsRoute() {
     void loadRows();
   }, []);
 
+  async function handleExportFailedCases() {
+    setIsExporting(true);
+    setNotice(null);
+    try {
+      const payload = await exportFailedCases();
+      setNotice(`${payload.rows_written} draft rows exported to ${payload.dataset.name}.`);
+    } catch (exportError) {
+      setNotice(exportError instanceof Error ? exportError.message : "Unknown error.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <section className="page">
       <header className="page-header">
@@ -36,11 +51,21 @@ export function LogsRoute() {
         </div>
         <div className="page-header__meta page-header__meta--actions">
           <span className="pill">{rows.length} incidents</span>
+          <button className="button button--secondary" type="button" disabled={isExporting} onClick={() => void handleExportFailedCases()}>
+            {isExporting ? "Exporting..." : "Export failed cases"}
+          </button>
           <button className="button button--secondary" type="button" onClick={() => void loadRows()}>
             Refresh logs
           </button>
         </div>
       </header>
+
+      {notice ? (
+        <div className="feedback feedback--info">
+          <strong>Logs export</strong>
+          <p>{notice}</p>
+        </div>
+      ) : null}
 
       {state === "loading" ? (
         <div className="panel panel--soft empty-state">
