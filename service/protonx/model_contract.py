@@ -1,6 +1,6 @@
 """Compact model-facing contract for the tiny tool router.
 
-The model only sees candidate tools, the user text, and the structured output.
+The model sees the available tools, the user text, and the structured output.
 Runtime policy such as fallback copy, OpenAI-compatible wrapping, and validator
 decisions stays in code outside the training signal.
 """

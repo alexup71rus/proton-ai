@@ -31,7 +31,7 @@ def load_human_logs(limit: int = 100) -> list[dict[str, Any]]:
         result.append(
             {
                 "user": row.get("user_text", ""),
-                "candidates": row.get("candidate_tools", []),
+                "candidates": row.get("available_tools", []),
                 "raw_output_summary": textwrap.shorten(raw_output, width=120, placeholder="..."),
                 "raw_output": raw_output,
                 "error": row.get("validation_error") or "none",
@@ -63,14 +63,15 @@ def export_failed_cases_as_dataset(tools_registry: list[dict[str, Any]], limit: 
         user_text = str(row.get("user_text") or "").strip()
         if not user_text:
             continue
-        candidate_tools = [
+        available_tool_names = row.get("available_tools", [])
+        available_tools = [
             registry_by_name[name]
-            for name in row.get("candidate_tools", [])
+            for name in available_tool_names
             if name in registry_by_name
         ]
         dataset_rows.append(
             {
-                "tools": with_dataset_fallback_tool(candidate_tools),
+                "tools": with_dataset_fallback_tool(available_tools),
                 "user": user_text,
                 "assistant": build_dataset_fallback_payload(),
             }

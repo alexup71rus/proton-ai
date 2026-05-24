@@ -84,6 +84,7 @@ def test_post_training_start_forwards_config(tmp_path: Path, monkeypatch, client
         "hidden_dim": 32,
         "num_layers": 1,
         "num_heads": 4,
+        "learning_rate": 0.001,
     }
 
 
@@ -210,4 +211,5 @@ def test_post_training_start_uses_workspace_defaults(tmp_path: Path, monkeypatch
                 "hidden_dim": 96,
                 "num_layers": 3,
                 "num_heads": 8,
+                    "learning_rate": 0.001,
         }

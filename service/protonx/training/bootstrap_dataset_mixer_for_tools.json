@@ -1,0 +1,179 @@
+{
+  "target_rows": 1500,
+  "fallback_ratio": 0.3,
+  "punctuation": ["", "?", ".", "!"],
+  "case_variants": ["as_is", "capitalize"],
+  "decoy_tools_per_row": 2,
+  "decoy_tools": [
+    {
+      "name": "open_browser",
+      "tags": ["browser", "web", "open url", "браузер", "открыть сайт", "интернет"]
+    },
+    {
+      "name": "play_music",
+      "tags": ["music", "audio", "song", "playlist", "музыка", "плейлист"]
+    },
+    {
+      "name": "set_volume",
+      "tags": ["volume", "sound", "loudness", "speaker", "громкость", "звук"]
+    },
+    {
+      "name": "control_light",
+      "tags": ["light", "lamp", "brightness", "turn on", "свет", "лампа", "яркость"]
+    },
+    {
+      "name": "search_web",
+      "tags": ["search", "web search", "google", "internet", "найти", "поиск в интернете"]
+    },
+    {
+      "name": "open_file",
+      "tags": ["open file", "document", "path", "read file", "открыть файл", "документ"]
+    },
+    {
+      "name": "create_note",
+      "tags": ["note", "memo", "write down", "todo", "заметка", "записать"]
+    },
+    {
+      "name": "send_email",
+      "tags": ["email", "mail", "message", "send", "почта", "письмо"]
+    },
+    {
+      "name": "get_weather",
+      "tags": ["weather", "forecast", "temperature", "rain", "погода", "температура"]
+    },
+    {
+      "name": "list_processes",
+      "tags": ["processes", "tasks", "cpu", "running apps", "процессы", "задачи"]
+    },
+    {
+      "name": "restart_service",
+      "tags": ["restart", "service", "daemon", "reload", "перезапуск", "сервис"]
+    },
+    {
+      "name": "translate_text",
+      "tags": ["translate", "language", "text", "перевод", "язык", "перевести"]
+    },
+    {
+      "name": "calculate_math",
+      "tags": ["math", "calculate", "sum", "number", "математика", "посчитать"]
+    },
+    {
+      "name": "take_screenshot",
+      "tags": ["screenshot", "screen", "capture", "image", "скриншот", "экран"]
+    }
+  ],
+  "templates": {
+    "en": [
+      "{phrase}",
+      "show me {phrase}",
+      "check {phrase}",
+      "get {phrase}",
+      "display {phrase}",
+      "what is {phrase}",
+      "which {phrase} is installed",
+      "can you show {phrase}",
+      "please check {phrase}"
+    ],
+    "ru": [
+      "{phrase}",
+      "покажи {phrase}",
+      "проверь {phrase}",
+      "выведи {phrase}",
+      "отобрази {phrase}",
+      "какая {phrase}",
+      "какая {phrase} установлена",
+      "какая {phrase} у меня установлена",
+      "что за {phrase}",
+      "можешь проверить {phrase}",
+      "скажи {phrase}"
+    ]
+  },
+  "tools": {
+    "list_downloads": {
+      "en": ["downloads", "downloads folder", "download folder", "downloaded files", "files in downloads"],
+      "ru": ["загрузки", "папку загрузок", "скачанные файлы", "список загрузок", "что в загрузках"]
+    },
+    "get_node_version": {
+      "en": ["node version", "node js version", "node.js version", "node runtime", "node installed version"],
+      "ru": ["версия node", "версия node js", "версия ноды", "нода", "ноды"],
+      "requests": [
+        "покажи версию ноды",
+        "какая версия ноды у меня установлена",
+        "какая нода установлена"
+      ]
+    },
+    "get_python_version": {
+      "en": ["python version", "python runtime", "interpreter version", "python installed version"],
+      "ru": ["версия python", "версия питона", "питон", "интерпретатор", "какой python"],
+      "requests": [
+        "python version",
+        "check python version",
+        "какая версия python у меня установлена",
+        "покажи версию питона"
+      ]
+    },
+    "get_current_time": {
+      "en": ["current time", "time", "date", "clock", "time now"],
+      "ru": ["время", "текущее время", "дата", "который час", "сколько времени"],
+      "requests": [
+        "what time is it",
+        "show current time",
+        "который час",
+        "сколько времени"
+      ]
+    },
+    "get_disk_usage": {
+      "en": ["disk usage", "disk space", "free space", "storage", "free disk space"],
+      "ru": ["диск", "место на диске", "свободное место", "размер диска", "сколько места"],
+      "requests": [
+        "check disk space",
+        "show disk space",
+        "размер диска"
+      ]
+    }
+  },
+  "fallback": {
+    "en": [
+      "show me version",
+      "check version",
+      "what version",
+      "which version is installed",
+      "what is installed",
+      "show installed version",
+      "check installed version",
+      "tell me a joke",
+      "write a poem",
+      "search the web",
+      "open browser",
+      "turn on the light",
+      "play music",
+      "make volume lower",
+      "how are you",
+      "hello",
+      "what's up",
+      "make it quieter",
+      "open",
+      "change it"
+    ],
+    "ru": [
+      "покажи версию",
+      "какая версия",
+      "какая версия установлена",
+      "какая версия у меня установлена",
+      "что установлено",
+      "покажи установленную версию",
+      "расскажи шутку",
+      "напиши стих",
+      "найди в интернете",
+      "открой браузер",
+      "включи свет",
+      "сделай музыку тише",
+      "как дела",
+      "привет",
+      "поболтай со мной",
+      "сделай потише",
+      "открой",
+      "измени это"
+    ]
+  }
+}

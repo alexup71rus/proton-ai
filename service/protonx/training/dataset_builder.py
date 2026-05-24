@@ -1,12 +1,16 @@
 import json
-from itertools import permutations
+import hashlib
 from pathlib import Path
+from typing import Any
 
 from protonx.contracts import build_fallback_payload
 from protonx.contracts import with_compact_fallback_tool
 from protonx.model_contract import compact_tool_from_definition
 from protonx.model_contract import compact_tool_from_record
 from protonx.schemas import ToolDefinition
+
+
+DEFAULT_MIXER_SEED_PATH = Path(__file__).with_name("bootstrap_dataset_mixer_for_tools.json")
 
 
 def _default_arguments(tool: ToolDefinition) -> dict:
@@ -23,6 +27,153 @@ def _default_arguments(tool: ToolDefinition) -> dict:
 
 def _has_cyrillic(text: str) -> bool:
     return any(char.lower() == "ё" or "а" <= char.lower() <= "я" for char in text)
+
+
+def _load_mixer_seed(seed_path: Path = DEFAULT_MIXER_SEED_PATH) -> dict[str, Any]:
+    if not seed_path.exists():
+        return {}
+    payload = json.loads(seed_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Dataset mixer seed must be a JSON object.")
+    return payload
+
+
+def _language_key(text: str) -> str:
+    return "ru" if _has_cyrillic(text) else "en"
+
+
+def _dedupe_texts(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        normalized = " ".join(str(value).strip().split())
+        if not normalized:
+            continue
+        key = normalized
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(normalized)
+    return deduped
+
+
+def _dedupe_compact_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for tool in tools:
+        name = str(tool.get("name") or "")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        deduped.append(tool)
+    return deduped
+
+
+def _append_punctuation(text: str, punctuation: str) -> str:
+    stripped = text.strip()
+    if not punctuation or stripped.endswith(("?", "!", ".", ",", ";", ":", "…")):
+        return stripped
+    return f"{stripped}{punctuation}"
+
+
+def _apply_case_variant(text: str, case_variant: str) -> str:
+    if case_variant == "capitalize" and text:
+        return f"{text[0].upper()}{text[1:]}"
+    return text
+
+
+def _render_request_variants(
+    phrase: str,
+    templates: list[str],
+    punctuation_values: list[str],
+    case_variants: list[str],
+) -> list[str]:
+    rendered: list[str] = []
+    for template in templates:
+        base = template.format(phrase=phrase).strip()
+        for punctuation in punctuation_values:
+            punctuated = _append_punctuation(base, punctuation)
+            for case_variant in case_variants:
+                rendered.append(_apply_case_variant(punctuated, case_variant))
+    return _dedupe_texts(rendered)
+
+
+def _seed_tool_phrases(tool: ToolDefinition, seed: dict[str, Any]) -> dict[str, list[str]]:
+    tool_seed = (seed.get("tools") or {}).get(tool.name) or {}
+    phrases: dict[str, list[str]] = {"en": [], "ru": []}
+    for language in ("en", "ru"):
+        raw_phrases = tool_seed.get(language) or []
+        if isinstance(raw_phrases, list):
+            phrases[language].extend(str(phrase) for phrase in raw_phrases)
+
+    for tag in tool.tags:
+        phrases[_language_key(tag)].append(tag)
+    phrases["en"].append(tool.name.replace("_", " "))
+
+    return {
+        language: _dedupe_texts(language_phrases)
+        for language, language_phrases in phrases.items()
+    }
+
+
+def _mixer_user_requests(tool: ToolDefinition, seed: dict[str, Any]) -> list[str]:
+    templates_by_language = seed.get("templates") or {}
+    punctuation_values = seed.get("punctuation") or ["", "?"]
+    case_variants = seed.get("case_variants") or ["as_is"]
+    if not isinstance(punctuation_values, list):
+        punctuation_values = [""]
+    if not isinstance(case_variants, list):
+        case_variants = ["as_is"]
+
+    requests: list[str] = _mixer_explicit_requests(tool, seed)
+    phrases_by_language = _seed_tool_phrases(tool, seed)
+    for language, phrases in phrases_by_language.items():
+        templates = templates_by_language.get(language) or ["{phrase}"]
+        if not isinstance(templates, list):
+            templates = ["{phrase}"]
+        for phrase in phrases:
+            requests.extend(
+                _render_request_variants(
+                    phrase,
+                    [str(template) for template in templates],
+                    [str(value) for value in punctuation_values],
+                    [str(value) for value in case_variants],
+                )
+            )
+
+    requests.extend(_tool_specific_requests(tool))
+    return _dedupe_texts(requests)
+
+
+def _mixer_explicit_requests(tool: ToolDefinition, seed: dict[str, Any]) -> list[str]:
+    tool_seed = (seed.get("tools") or {}).get(tool.name) or {}
+    raw_requests = tool_seed.get("requests") or []
+    if not isinstance(raw_requests, list):
+        return []
+
+    punctuation_values = seed.get("punctuation") or ["", "?"]
+    case_variants = seed.get("case_variants") or ["as_is"]
+    requests: list[str] = []
+    for request in raw_requests:
+        requests.extend(
+            _render_request_variants(
+                str(request),
+                ["{phrase}"],
+                [str(value) for value in punctuation_values],
+                [str(value) for value in case_variants],
+            )
+        )
+    return _dedupe_texts(requests)
+
+
+def _pinned_user_requests(tool: ToolDefinition, seed: dict[str, Any]) -> list[str]:
+    pinned = [
+        tool.name.replace("_", " "),
+        *tool.tags,
+        *_tool_specific_requests(tool),
+        *_mixer_explicit_requests(tool, seed),
+    ]
+    return _dedupe_texts([str(request) for request in pinned])
 
 
 def _tool_aliases(tool: ToolDefinition) -> list[str]:
@@ -66,6 +217,9 @@ def _tool_specific_requests(tool: ToolDefinition) -> list[str]:
             "what is in downloads",
             "show my downloaded files",
             "покажи загрузки",
+            "проверь загрузки",
+            "выведи загрузки",
+            "покажи скачанные файлы",
             "что в загрузках",
             "открой папку загрузок",
             "список загрузок",
@@ -79,6 +233,9 @@ def _tool_specific_requests(tool: ToolDefinition) -> list[str]:
             "покажи версию node",
             "какая версия node",
             "версия node js",
+            "версия ноды",
+            "какая версия ноды",
+            "какая нода установлена",
         ],
         "get_python_version": [
             "show me python version",
@@ -104,9 +261,15 @@ def _tool_specific_requests(tool: ToolDefinition) -> list[str]:
             "show me disk usage",
             "check disk",
             "show free space",
+            "show disk space",
+            "check disk space",
+            "disk space",
+            "free disk space",
             "how much free space is left",
             "disk usage",
             "покажи место на диске",
+            "проверь диск",
+            "размер диска",
             "сколько свободного места",
             "свободное место на диске",
         ],
@@ -194,20 +357,94 @@ def _build_user_requests(tool: ToolDefinition) -> list[str]:
     return deduped_requests or [f"show me {tool.name.replace('_', ' ')}"]
 
 
-def _tool_call_example(
-    primary: ToolDefinition, alternatives: list[ToolDefinition], user_text: str
-) -> dict:
-    candidate_tools = [
-        compact_tool_from_definition(primary, variation_key=f"{user_text}|0")
+def _seed_fallback_requests(seed: dict[str, Any]) -> list[str]:
+    fallback_seed = seed.get("fallback") or {}
+    punctuation_values = seed.get("punctuation") or ["", "?"]
+    case_variants = seed.get("case_variants") or ["as_is"]
+    raw_requests: list[str] = []
+    requests: list[str] = []
+    for language in ("en", "ru"):
+        phrases = fallback_seed.get(language) or []
+        if not isinstance(phrases, list):
+            continue
+        for phrase in phrases:
+            raw_requests.append(str(phrase))
+            requests.extend(
+                _render_request_variants(
+                    str(phrase),
+                    ["{phrase}"],
+                    [str(value) for value in punctuation_values],
+                    [str(value) for value in case_variants],
+                )
+            )
+    return _dedupe_texts([*raw_requests, *requests])
+
+
+def _seed_decoy_tools(seed: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_decoys = seed.get("decoy_tools") or []
+    if not isinstance(raw_decoys, list):
+        return []
+
+    decoys: list[dict[str, Any]] = []
+    for raw_tool in raw_decoys:
+        if not isinstance(raw_tool, dict) or not raw_tool.get("name"):
+            continue
+        compact_tool = compact_tool_from_record(raw_tool)
+        if compact_tool.get("name"):
+            decoys.append(compact_tool)
+    return _dedupe_compact_tools(decoys)
+
+
+def _compact_decoy_tools(seed: dict[str, Any], user_text: str) -> list[dict[str, Any]]:
+    decoys = _seed_decoy_tools(seed)
+    if not decoys:
+        return []
+
+    raw_count = seed.get("decoy_tools_per_row", len(decoys))
+    max_decoy_count = raw_count if isinstance(raw_count, int) else len(decoys)
+    if max_decoy_count <= 0:
+        return []
+    decoy_count = int(
+        hashlib.sha1(f"{user_text}|decoy-count".encode("utf-8")).hexdigest(),
+        16,
+    ) % (min(max_decoy_count, len(decoys)) + 1)
+    if decoy_count <= 0:
+        return []
+
+    selected = sorted(
+        decoys,
+        key=lambda tool: hashlib.sha1(
+            f"{user_text}|{tool['name']}".encode("utf-8")
+        ).hexdigest(),
+    )[:decoy_count]
+    return [
+        compact_tool_from_record(tool, variation_key=f"{user_text}|decoy|{index}")
+        for index, tool in enumerate(selected)
     ]
-    candidate_tools.extend(
-        compact_tool_from_definition(tool, variation_key=f"{user_text}|{index}")
-        for index, tool in enumerate(alternatives[:2], start=1)
+
+
+def _compact_available_tools(
+    tools: list[ToolDefinition], user_text: str, seed: dict[str, Any] | None = None
+) -> list[dict]:
+    seed = seed or {}
+    return with_compact_fallback_tool(
+        [
+            compact_tool_from_definition(tool, variation_key=f"{user_text}|{index}")
+            for index, tool in enumerate(tools)
+        ]
+        + _compact_decoy_tools(seed, user_text),
+        variation_key=user_text,
     )
-    if len(candidate_tools) > 1 and primary.name > candidate_tools[1]["name"]:
-        candidate_tools[0], candidate_tools[1] = candidate_tools[1], candidate_tools[0]
+
+
+def _tool_call_example(
+    primary: ToolDefinition,
+    available_tools: list[ToolDefinition],
+    user_text: str,
+    seed: dict[str, Any] | None = None,
+) -> dict:
     return {
-        "tools": candidate_tools,
+        "tools": _compact_available_tools(available_tools, user_text, seed),
         "user": user_text,
         "assistant": {
             "tool_calls": [
@@ -217,13 +454,17 @@ def _tool_call_example(
     }
 
 
-def _fallback_row(tool_payloads: list[dict], user_text: str) -> dict:
+def _fallback_row(
+    tool_payloads: list[dict], user_text: str, seed: dict[str, Any] | None = None
+) -> dict:
+    seed = seed or {}
     return {
         "tools": with_compact_fallback_tool(
             [
                 compact_tool_from_record(tool_payload, variation_key=f"{user_text}|{index}")
                 for index, tool_payload in enumerate(tool_payloads)
-            ],
+            ]
+            + _compact_decoy_tools(seed, user_text),
             variation_key=user_text,
         ),
         "user": user_text,
@@ -231,74 +472,88 @@ def _fallback_row(tool_payloads: list[dict], user_text: str) -> dict:
     }
 
 
-def _unsupported_fallback_example(tools: list[ToolDefinition]) -> dict:
+def _unsupported_fallback_example(
+    tools: list[ToolDefinition], seed: dict[str, Any] | None = None
+) -> dict:
     return _fallback_row(
-        [compact_tool_from_definition(tool) for tool in tools[:2]],
+        [compact_tool_from_definition(tool) for tool in tools],
         "tell me a joke",
+        seed,
     )
 
 
-def _fallback_example(tools: list[ToolDefinition]) -> dict:
+def _fallback_example(tools: list[ToolDefinition], seed: dict[str, Any] | None = None) -> dict:
     return _fallback_row(
-        [compact_tool_from_definition(tool) for tool in tools[:2]],
+        [compact_tool_from_definition(tool) for tool in tools],
         "how are you",
+        seed,
     )
 
 
-def _fallback_example_ru(tools: list[ToolDefinition]) -> dict:
+def _fallback_example_ru(tools: list[ToolDefinition], seed: dict[str, Any] | None = None) -> dict:
     return _fallback_row(
-        [compact_tool_from_definition(tool) for tool in tools[:2]],
+        [compact_tool_from_definition(tool) for tool in tools],
         "как дела",
+        seed,
     )
 
 
-def _ambiguous_fallback_example(tools: list[ToolDefinition]) -> dict:
+def _ambiguous_fallback_example(
+    tools: list[ToolDefinition], seed: dict[str, Any] | None = None
+) -> dict:
     return _fallback_row(
-        [compact_tool_from_definition(tool) for tool in tools[:2]],
+        [compact_tool_from_definition(tool) for tool in tools],
         "change it",
+        seed,
     )
 
 
-def _chatty_fallback_examples(tools: list[ToolDefinition]) -> list[dict]:
-    tool_payloads = [compact_tool_from_definition(tool) for tool in tools[:2]]
+def _chatty_fallback_examples(
+    tools: list[ToolDefinition], seed: dict[str, Any] | None = None
+) -> list[dict]:
+    tool_payloads = [compact_tool_from_definition(tool) for tool in tools]
     return [
-        _fallback_row(tool_payloads, "hello"),
-        _fallback_row(tool_payloads, "hi there"),
-        _fallback_row(tool_payloads, "what's up"),
-        _fallback_row(tool_payloads, "привет"),
-        _fallback_row(tool_payloads, "доброе утро"),
-        _fallback_row(tool_payloads, "поболтай со мной"),
+        _fallback_row(tool_payloads, "hello", seed),
+        _fallback_row(tool_payloads, "hi there", seed),
+        _fallback_row(tool_payloads, "what's up", seed),
+        _fallback_row(tool_payloads, "привет", seed),
+        _fallback_row(tool_payloads, "доброе утро", seed),
+        _fallback_row(tool_payloads, "поболтай со мной", seed),
     ]
 
 
-def _hard_negative_examples(tools: list[ToolDefinition]) -> list[dict]:
+def _hard_negative_examples(
+    tools: list[ToolDefinition], seed: dict[str, Any] | None = None
+) -> list[dict]:
     tool_map = {tool.name: tool for tool in tools}
     rows: list[dict] = []
 
     if {"get_node_version", "get_python_version"}.issubset(tool_map):
-        candidate_tools = [
-            compact_tool_from_definition(tool_map["get_node_version"]),
-            compact_tool_from_definition(tool_map["get_python_version"]),
+        available_tools = [
+            compact_tool_from_definition(tool)
+            for tool in tools
         ]
-        rows.append(_fallback_row(candidate_tools, "show me version"))
-        rows.append(_fallback_row(candidate_tools, "покажи версию"))
+        rows.append(_fallback_row(available_tools, "show me version", seed))
+        rows.append(_fallback_row(available_tools, "check version", seed))
+        rows.append(_fallback_row(available_tools, "what version", seed))
+        rows.append(_fallback_row(available_tools, "покажи версию", seed))
+        rows.append(_fallback_row(available_tools, "какая версия", seed))
 
     if {"light", "window", "speaker"}.issubset(tool_map):
-        candidate_tools = [
-            compact_tool_from_definition(tool_map["light"]),
-            compact_tool_from_definition(tool_map["window"]),
-            compact_tool_from_definition(tool_map["speaker"]),
+        available_tools = [
+            compact_tool_from_definition(tool)
+            for tool in tools
         ]
-        rows.append(_fallback_row(candidate_tools, "make it quieter"))
-        rows.append(_fallback_row(candidate_tools, "сделай потише"))
+        rows.append(_fallback_row(available_tools, "make it quieter", seed))
+        rows.append(_fallback_row(available_tools, "сделай потише", seed))
 
     if {"window", "file_search"}.issubset(tool_map):
-        candidate_tools = [
-            compact_tool_from_definition(tool_map["window"]),
-            compact_tool_from_definition(tool_map["file_search"]),
+        available_tools = [
+            compact_tool_from_definition(tool)
+            for tool in tools
         ]
-        rows.append(_fallback_row(candidate_tools, "open"))
-        rows.append(_fallback_row(candidate_tools, "открой"))
+        rows.append(_fallback_row(available_tools, "open", seed))
+        rows.append(_fallback_row(available_tools, "открой", seed))
 
     return rows
 
@@ -318,7 +573,9 @@ def _supports_probe_arguments(tool: ToolDefinition, arguments: dict[str, str]) -
     return True
 
 
-def _argument_probe_examples(tools: list[ToolDefinition]) -> list[dict]:
+def _argument_probe_examples(
+    tools: list[ToolDefinition], seed: dict[str, Any] | None = None
+) -> list[dict]:
     tool_map = {tool.name: tool for tool in tools}
     rows: list[dict] = []
 
@@ -330,10 +587,7 @@ def _argument_probe_examples(tools: list[ToolDefinition]) -> list[dict]:
         rows.append(
             {
                 "tools": [
-                    compact_tool_from_definition(
-                        search_files_tool,
-                        variation_key="найди package.json|0",
-                    )
+                    *_compact_available_tools(tools, "найди package.json", seed)
                 ],
                 "user": "найди package.json",
                 "assistant": {
@@ -346,10 +600,7 @@ def _argument_probe_examples(tools: list[ToolDefinition]) -> list[dict]:
         rows.append(
             {
                 "tools": [
-                    compact_tool_from_definition(
-                        search_files_tool,
-                        variation_key="find README.md|0",
-                    )
+                    *_compact_available_tools(tools, "find README.md", seed)
                 ],
                 "user": "find README.md",
                 "assistant": {
@@ -368,10 +619,7 @@ def _argument_probe_examples(tools: list[ToolDefinition]) -> list[dict]:
         rows.append(
             {
                 "tools": [
-                    compact_tool_from_definition(
-                        search_web_tool,
-                        variation_key="find node js latest version|0",
-                    )
+                    *_compact_available_tools(tools, "find node js latest version", seed)
                 ],
                 "user": "find node js latest version",
                 "assistant": {
@@ -401,42 +649,120 @@ def _interleave_rows(tool_rows: list[dict], special_rows: list[dict], interval: 
     return merged_rows
 
 
-def build_examples(tools: list[ToolDefinition]) -> list[dict]:
+def _sample_rows(rows: list[dict], target_rows: int | None) -> list[dict]:
+    if target_rows is None or target_rows <= 0 or len(rows) <= target_rows:
+        return rows
+
+    preserve_head = min(len(rows), target_rows, 120)
+    pinned_rows = rows[:preserve_head]
+    remaining_rows = rows[preserve_head:]
+    remaining_target = target_rows - preserve_head
+    if remaining_target <= 0 or not remaining_rows:
+        return pinned_rows[:target_rows]
+
+    sampled: list[dict] = list(pinned_rows)
+    for index in range(remaining_target):
+        source_index = (index * len(remaining_rows)) // remaining_target
+        sampled.append(remaining_rows[source_index])
+    return sampled
+
+
+def _sample_balanced_rows(
+    tool_rows: list[dict],
+    special_rows: list[dict],
+    target_rows: int | None,
+    fallback_ratio: float,
+) -> list[dict]:
+    if target_rows is None or target_rows <= 0:
+        return _interleave_rows(tool_rows, special_rows)
+    tool_rows_by_name: dict[str, list[dict]] = {}
+    class_order: list[str] = []
+    for row in tool_rows:
+        tool_name = str(row["assistant"]["tool_calls"][0]["name"])
+        if tool_name not in tool_rows_by_name:
+            tool_rows_by_name[tool_name] = []
+            class_order.append(tool_name)
+        tool_rows_by_name[tool_name].append(row)
+
+    fallback_target = 0
+    if special_rows:
+        fallback_target = min(
+            len(special_rows),
+            max(1, round(target_rows * fallback_ratio)),
+        )
+
+    tool_target = target_rows - fallback_target
+    sampled_by_name: list[list[dict]] = []
+    if class_order:
+        base_target = tool_target // len(class_order)
+        remainder = tool_target % len(class_order)
+        for index, tool_name in enumerate(class_order):
+            class_target = base_target + (1 if index < remainder else 0)
+            sampled_by_name.append(_sample_rows(tool_rows_by_name[tool_name], class_target))
+    if fallback_target:
+        sampled_by_name.append(_sample_rows(special_rows, fallback_target))
+
+    if not sampled_by_name:
+        return []
+
+    balanced_rows: list[dict] = []
+    max_class_rows = max(len(rows) for rows in sampled_by_name)
+    for row_index in range(max_class_rows):
+        for rows in sampled_by_name:
+            if row_index < len(rows):
+                balanced_rows.append(rows[row_index])
+    return balanced_rows[:target_rows]
+
+
+def build_examples(tools: list[ToolDefinition], target_rows: int | None = None) -> list[dict]:
     tool_rows: list[dict] = []
     special_rows: list[dict] = []
     if not tools:
         return []
 
-    if len(tools) == 1:
-        primary = tools[0]
-        for user_text in _build_user_requests(primary):
-            tool_rows.append(_tool_call_example(primary, [], user_text))
-    else:
-        for primary, secondary in permutations(tools, 2):
-            alternatives = [
-                secondary,
-                *[
-                    tool
-                    for tool in tools
-                    if tool.name not in {primary.name, secondary.name}
-                ],
-            ]
+    seed = _load_mixer_seed()
+    if target_rows is None:
+        raw_target_rows = seed.get("target_rows")
+        if isinstance(raw_target_rows, int):
+            target_rows = raw_target_rows
+    fallback_ratio = seed.get("fallback_ratio", 0.2)
+    if not isinstance(fallback_ratio, (int, float)):
+        fallback_ratio = 0.2
+
+    for primary in tools:
+        for user_text in _pinned_user_requests(primary, seed):
+            tool_rows.append(_tool_call_example(primary, tools, user_text, seed))
+
+    pinned_users = {row["user"] for row in tool_rows}
+    for primary in tools:
+        for user_text in _mixer_user_requests(primary, seed):
+            if user_text in pinned_users:
+                continue
+            tool_rows.append(_tool_call_example(primary, tools, user_text, seed))
+
+    if not tool_rows:
+        for primary in tools:
             for user_text in _build_user_requests(primary):
-                tool_rows.append(_tool_call_example(primary, alternatives, user_text))
+                tool_rows.append(_tool_call_example(primary, tools, user_text, seed))
 
     if tools:
-        special_rows.append(_fallback_example(tools))
-        special_rows.append(_fallback_example_ru(tools))
-        special_rows.append(_unsupported_fallback_example(tools))
-        special_rows.append(_ambiguous_fallback_example(tools))
-        special_rows.extend(_chatty_fallback_examples(tools))
-        special_rows.extend(_hard_negative_examples(tools))
-    special_rows.extend(_argument_probe_examples(tools))
-    return _interleave_rows(tool_rows, special_rows)
+        special_rows.append(_fallback_example(tools, seed))
+        special_rows.append(_fallback_example_ru(tools, seed))
+        special_rows.append(_unsupported_fallback_example(tools, seed))
+        special_rows.append(_ambiguous_fallback_example(tools, seed))
+        special_rows.extend(_chatty_fallback_examples(tools, seed))
+        special_rows.extend(_hard_negative_examples(tools, seed))
+        fallback_payloads = [compact_tool_from_definition(tool) for tool in tools]
+        for user_text in _seed_fallback_requests(seed):
+            special_rows.append(_fallback_row(fallback_payloads, user_text, seed))
+    tool_rows.extend(_argument_probe_examples(tools, seed))
+    return _sample_balanced_rows(tool_rows, special_rows, target_rows, float(fallback_ratio))
 
 
-def build_synthetic_dataset(tools: list[ToolDefinition], output_path: Path) -> int:
-    rows = build_examples(tools)
+def build_synthetic_dataset(
+    tools: list[ToolDefinition], output_path: Path, target_rows: int | None = None
+) -> int:
+    rows = build_examples(tools, target_rows=target_rows)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     rows_written = 0
     with output_path.open("w", encoding="utf-8") as handle:

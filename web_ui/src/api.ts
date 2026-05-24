@@ -210,9 +210,6 @@ export type TestArguments = Record<string, unknown>;
 export type TestValidatorResult = Record<string, unknown>;
 
 
-export type TestDebugConfidence = "high" | "low";
-
-
 export type TestFinalAction = "tool_call" | "fallback";
 
 
@@ -234,12 +231,10 @@ export interface TestResultPayload {
 
 
 export interface TestDebugPayload {
-  candidate_tools: string[];
   serialized_prompt: string;
   raw_model_output: string;
   repaired_output: string | null;
   validator_result: TestValidatorResult;
-  confidence: TestDebugConfidence;
   final_action: TestFinalAction;
 }
 

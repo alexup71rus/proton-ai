@@ -28,7 +28,6 @@ class ToolRegistryResponse(BaseModel):
 class RoutePreviewRequest(BaseModel):
     user_text: str
     tools: list[ToolDefinition]
-    max_candidates: int = 3
     strict_mode: bool = True
     model_path: str | None = None
     tokenizer_path: str | None = None
@@ -36,13 +35,11 @@ class RoutePreviewRequest(BaseModel):
 
 class RoutePreviewResponse(BaseModel):
     user_text: str
-    candidate_tools: list[str]
     serialized_prompt: str
     model_output: str
     repaired_output: str | None
     validation_error: str | None
     validator_result: dict[str, Any]
-    confidence: Literal["high", "low"]
     final_action: Literal["tool_call", "fallback"]
     final_output: dict[str, Any]
 
@@ -74,3 +71,4 @@ class TrainStartRequest(BaseModel):
     hidden_dim: int = 64
     num_layers: int = 2
     num_heads: int = 4
+    learning_rate: float = 1e-3

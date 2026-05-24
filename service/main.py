@@ -84,6 +84,7 @@ def train_start(payload: TrainStartRequest) -> dict:
             hidden_dim=payload.hidden_dim,
             num_layers=payload.num_layers,
             num_heads=payload.num_heads,
+            learning_rate=payload.learning_rate,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

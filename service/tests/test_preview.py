@@ -51,8 +51,6 @@ def test_route_preview_returns_full_pipeline_fields(monkeypatch):
     )
     payload = response.json()
     assert response.status_code == 200
-    assert payload["candidate_tools"] == ["light"]
-    assert payload["confidence"] == "high"
     assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "tool_call"
     assert payload["final_output"] == {"tool_calls": [{"name": "light", "arguments": {"state": "on"}}]}
@@ -155,8 +153,6 @@ def test_route_preview_routes_single_zero_argument_tool_via_model(monkeypatch):
     )
     payload = response.json()
     assert response.status_code == 200
-    assert payload["candidate_tools"] == ["list_downloads"]
-    assert payload["confidence"] == "high"
     assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "tool_call"
     assert payload["final_output"] == {"tool_calls": [{"name": "list_downloads", "arguments": {}}]}
@@ -201,8 +197,6 @@ def test_route_preview_routes_best_zero_argument_tool_via_model(monkeypatch):
     )
     payload = response.json()
     assert response.status_code == 200
-    assert payload["candidate_tools"] == ["get_node_version", "get_python_version"]
-    assert payload["confidence"] == "high"
     assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "tool_call"
     assert payload["validation_error"] is None
@@ -210,11 +204,11 @@ def test_route_preview_routes_best_zero_argument_tool_via_model(monkeypatch):
     assert payload["model_output"] == '{"tool_calls":[{"name":"get_node_version","arguments":{}}]}'
 
 
-def test_route_preview_falls_back_on_ambiguous_candidates_without_calling_model(monkeypatch):
+def test_route_preview_lets_model_route_ambiguous_text(monkeypatch):
     monkeypatch.setattr(
         inference.MODEL_RUNTIME,
         "generate",
-        lambda prompt: (_ for _ in ()).throw(AssertionError("model should not run")),
+        lambda prompt: '{"tool_calls":[{"name":"__fallback__","arguments":{}}]}',
     )
     response = client.post(
         "/route/preview",
@@ -246,8 +240,6 @@ def test_route_preview_falls_back_on_ambiguous_candidates_without_calling_model(
     )
     payload = response.json()
     assert response.status_code == 200
-    assert payload["confidence"] == "low"
-    assert payload["validator_result"]["valid"] is False
+    assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "fallback"
     assert payload["final_output"] == {"tool_calls": [{"name": FALLBACK_TOOL_NAME, "arguments": {}}]}
-    assert payload["candidate_tools"] == ["light", "night_light"]

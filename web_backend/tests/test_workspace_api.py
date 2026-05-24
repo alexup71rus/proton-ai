@@ -18,6 +18,7 @@ def test_get_workspace_creates_default_file(tmp_path: Path, monkeypatch, client)
         "dataset_name": "routing.jsonl",
         "epochs": 1,
         "batch_size": 1,
+        "learning_rate": 0.001,
     }
     assert payload["test"] == {
         "user_text": "сделай свет потеплее",

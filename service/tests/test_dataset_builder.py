@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from protonx.contracts import FALLBACK_TOOL_NAME
+from protonx.contracts import with_fallback_tool
 from protonx.routing.prompt import build_routing_prompt
 from protonx.schemas import JsonSchema, ToolDefinition
 from protonx.training.dataset_builder import build_examples, build_synthetic_dataset
@@ -46,6 +47,47 @@ def test_build_synthetic_dataset_creates_jsonl_rows(tmp_path: Path):
     )
     assert any(
         {tool["name"] for tool in row["tools"]} >= {"window", "light"} for row in rows
+    )
+
+
+def test_build_examples_can_generate_large_mixed_dataset_from_seed():
+    tools = [
+        ToolDefinition(
+            name="get_node_version",
+            description="Node version",
+            tags=["node version", "версия node", "версия ноды"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        ),
+        ToolDefinition(
+            name="get_python_version",
+            description="Python version",
+            tags=["python version", "версия python"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        ),
+        ToolDefinition(
+            name="get_disk_usage",
+            description="Disk usage",
+            tags=["disk space", "место на диске"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        ),
+    ]
+
+    rows = build_examples(tools, target_rows=500)
+    users = {row["user"] for row in rows}
+
+    assert len(rows) == 500
+    fallback_count = sum(
+        row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
+        for row in rows
+    )
+    assert fallback_count >= 70
+    assert any(user == "Какая версия ноды у меня установлена?" for user in users)
+    assert any(user == "Покажи версию ноды?" for user in users)
+    assert any(user == "какая версия установлена" for user in users)
+    assert any(user.startswith("Check disk space") for user in users)
+    assert any(
+        row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
+        for row in rows
     )
 
 
@@ -122,7 +164,8 @@ def test_build_examples_use_empty_arguments_for_zero_argument_tools_and_more_pro
     assert len(tool_rows) >= 8
     assert all(assistant["tool_calls"][0]["arguments"] == {} for row, assistant in tool_rows)
     assert any(row["user"] == "show me downloads" for row, assistant in tool_rows)
-    assert any(row["user"] == "покажи версия node" for row, assistant in tool_rows)
+    assert any(row["user"] == "покажи версию ноды" for row, assistant in tool_rows)
+    assert any(row["user"].startswith("какая версия ноды") for row, assistant in tool_rows)
 
 
 def test_build_examples_support_single_tool_registry():
@@ -174,15 +217,34 @@ def test_runtime_prompt_uses_same_compact_tools_contract_as_training_examples():
     training_example = build_examples(tools)[0]
     runtime_prompt = build_routing_prompt(
         user_text="turn on the lamp",
-        tools=tools,
+        tools=with_fallback_tool(tools),
     )
-    assert [tool["name"] for tool in runtime_prompt["tools"]] == [
-        tool["name"] for tool in training_example["tools"]
-    ]
-    assert [set(tool["tags"]) for tool in runtime_prompt["tools"]] == [
-        set(tool["tags"]) for tool in training_example["tools"]
-    ]
+    runtime_tool_names = [tool["name"] for tool in runtime_prompt["tools"]]
+    training_tool_names = [tool["name"] for tool in training_example["tools"]]
+    assert training_tool_names[: len(runtime_tool_names) - 1] == runtime_tool_names[:-1]
+    assert runtime_tool_names[-1] == FALLBACK_TOOL_NAME
+    assert training_tool_names[-1] == FALLBACK_TOOL_NAME
+    assert set(runtime_tool_names).issubset(set(training_tool_names))
     assert "system" not in runtime_prompt
+
+
+def test_build_examples_can_include_decoy_tools_without_targeting_them():
+    tools = [
+        ToolDefinition(
+            name="get_current_time",
+            description="Return current time",
+            tags=["current time", "time"],
+            arguments_schema=JsonSchema(type="object", properties={}, required=[]),
+        )
+    ]
+
+    rows = build_examples(tools, target_rows=120)
+    assistant_names = {row["assistant"]["tool_calls"][0]["name"] for row in rows}
+    tool_names = {tool["name"] for row in rows for tool in row["tools"]}
+
+    assert "open_browser" in tool_names
+    assert "play_music" in tool_names
+    assert assistant_names <= {"get_current_time", FALLBACK_TOOL_NAME}
 
 
 def test_build_examples_include_unknown_and_ambiguous_fallback_rows():

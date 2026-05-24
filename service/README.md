@@ -7,7 +7,7 @@
 ## Контракт модели
 
 ```text
-candidate_tools + user_text -> tool_calls JSON
+tools registry + user_text -> tool_calls JSON
 ```
 
 Пример обычного выбора:
@@ -28,8 +28,7 @@ Fallback тоже является tool call:
 
 ```text
 user_text
-  -> lexical pre-router
-  -> candidate tools
+  -> tools registry
   -> compact prompt
   -> ModelRuntime.generate()
   -> JSON repair
@@ -37,7 +36,7 @@ user_text
   -> final_output
 ```
 
-`/route/preview` возвращает debug этого же прохода: candidates, prompt, raw/repaired output, validation result, confidence, final action и `final_output`.
+`/route/preview` возвращает debug этого же прохода: prompt, raw/repaired output, validation result, final action и `final_output`.
 
 `/chat/completions` — совместимый adapter поверх того же router path. Политика вроде `answer_allowed` относится к adapter/template слою и не попадает в prompt или validator.
 

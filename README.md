@@ -7,15 +7,15 @@ Proton-X — экспериментальная платформа для обу
 ## Текущий контракт v1
 
 ```text
-candidate_tools + user_text -> tool_calls JSON
+tools registry + user_text -> tool_calls JSON
 ```
 
-Модель получает только список кандидатов и текст пользователя. Она не генерирует обычный текст, объяснения, fallback-сообщения или ответы “из головы”. Человекочитаемый результат приходит от executor/template слоя после вызова инструмента.
+Модель получает весь registry инструментов и текст пользователя. Она сама смотрит на `tags`/`args` инструментов и возвращает структурированный вызов. Она не генерирует обычный текст, объяснения, fallback-сообщения или ответы “из головы”. Человекочитаемый результат приходит от executor/template слоя после вызова инструмента.
 
 Пайплайн:
 
 ```text
-user -> pre-router -> top-k tools -> tiny model -> validator -> executor -> response
+user -> tools registry -> tiny model -> validator -> executor -> response
 ```
 
 Fallback — тоже структурированный выбор: синтетический инструмент `__fallback__`.

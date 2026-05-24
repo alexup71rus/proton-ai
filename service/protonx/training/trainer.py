@@ -10,15 +10,12 @@ import torch
 from torch import nn
 
 from protonx.config import DATA_DIR, ROOT_DIR
-from protonx.contracts import build_fallback_payload
-from protonx.model_contract import normalize_dataset_row
 from protonx.model_contract import PROMPT_FORMAT_VERSION
-from protonx.routing.validate import validate_model_output
-from protonx.schemas import JsonSchema, ToolDefinition
 from protonx.training.dataset_validation import validate_training_dataset_file
+from protonx.training.evaluation import evaluate_holdout
+from protonx.training.format import DEFAULT_OUTPUT_FORMAT
 from protonx.training.format import serialize_training_parts
 from protonx.training.format import serialize_training_record
-from protonx.training.format import decode_generated_continuation
 from protonx.training.common import normalize_artifact_name
 from protonx.training.model import TinyRouterConfig, TinyRouterModel
 from protonx.training.state import TRAINING_STATE
@@ -49,7 +46,10 @@ def _load_records(dataset_path: Path) -> list[dict]:
 def _write_tokenizer_corpus(records: list[dict], corpus_path: Path) -> None:
     corpus_path.parent.mkdir(parents=True, exist_ok=True)
     corpus_path.write_text(
-        "\n".join(serialize_training_record(record) for record in records),
+        "\n".join(
+            serialize_training_record(record, output_format=DEFAULT_OUTPUT_FORMAT)
+            for record in records
+        ),
         encoding="utf-8",
     )
 
@@ -188,114 +188,6 @@ def _update_metrics() -> None:
         TRAINING_STATE.metrics = {}
 
 
-def _tool_definition_from_compact_record(tool_payload: dict) -> ToolDefinition:
-    compact_args = tool_payload.get("args") or {}
-    properties: dict[str, dict] = {}
-    required: list[str] = []
-    for field_name, spec in compact_args.items():
-        required.append(field_name)
-        if isinstance(spec, list):
-            properties[field_name] = {
-                "type": "string",
-                "enum": [str(value) for value in spec],
-            }
-        else:
-            properties[field_name] = {"type": "string"}
-
-    return ToolDefinition(
-        name=str(tool_payload.get("name") or ""),
-        description=str(tool_payload.get("name") or ""),
-        tags=[str(tag) for tag in tool_payload.get("tags") or []],
-        arguments_schema=JsonSchema(
-            type="object",
-            properties=properties,
-            required=required,
-        ),
-    )
-
-
-def _generate_output(
-    config: TinyRouterConfig,
-    model: TinyRouterModel,
-    tokenizer: spm.SentencePieceProcessor,
-    prompt_text: str,
-) -> str:
-    token_ids = tokenizer.encode(prompt_text, out_type=int)[: config.max_seq_len]
-    generated = list(token_ids)
-
-    for _ in range(64):
-        input_ids = torch.tensor(
-            [generated[-config.max_seq_len :]],
-            dtype=torch.long,
-        )
-        with torch.no_grad():
-            logits = model(input_ids)
-        next_token = int(torch.argmax(logits[0, -1]).item())
-        generated.append(next_token)
-        if next_token == tokenizer.eos_id():
-            break
-
-    candidate = decode_generated_continuation(
-        tokenizer,
-        generated,
-        len(token_ids),
-        tokenizer.eos_id(),
-    )
-    return candidate or json.dumps(build_fallback_payload())
-
-
-def _evaluate_model(
-    records: list[dict],
-    config: TinyRouterConfig,
-    model: TinyRouterModel,
-    tokenizer: spm.SentencePieceProcessor,
-) -> dict[str, int]:
-    summary = {
-        "eval_total": 0,
-        "eval_valid": 0,
-        "eval_exact": 0,
-        "eval_positive_total": 0,
-        "eval_positive_exact": 0,
-        "eval_fallback_total": 0,
-        "eval_fallback_exact": 0,
-    }
-
-    for record in records:
-        normalized = normalize_dataset_row(record)
-        prompt_text, _assistant_text = serialize_training_parts(record)
-        raw_output = _generate_output(config, model, tokenizer, prompt_text)
-        candidate_tools = [
-            _tool_definition_from_compact_record(tool_payload)
-            for tool_payload in normalized["tools"]
-        ]
-        validation = validate_model_output(
-            candidate_tools,
-            raw_output,
-            strict_mode=True,
-        )
-        expected_name = normalized["assistant"]["tool_calls"][0]["name"]
-        predicted_name = None
-
-        summary["eval_total"] += 1
-        if validation.valid and validation.parsed_output and validation.parsed_output.get("tool_calls"):
-            predicted_name = validation.parsed_output["tool_calls"][0]["name"]
-            summary["eval_valid"] += 1
-
-        if predicted_name == expected_name:
-            summary["eval_exact"] += 1
-
-        if expected_name == "__fallback__":
-            summary["eval_fallback_total"] += 1
-            if predicted_name == expected_name:
-                summary["eval_fallback_exact"] += 1
-        else:
-            summary["eval_positive_total"] += 1
-            if predicted_name == expected_name:
-                summary["eval_positive_exact"] += 1
-
-    return summary
-
-
 def _prepare_training_runtime(
     records: list[dict],
     corpus_path: Path,
@@ -364,7 +256,10 @@ def run_training(
     hidden_dim: int = 64,
     num_layers: int = 2,
     num_heads: int = 4,
+    learning_rate: float = 1e-3,
 ) -> dict:
+    random.seed(0)
+    torch.manual_seed(0)
     TRAINING_STATE.update(status="running", error=None)
     try:
         records = _load_records(dataset_path)
@@ -406,14 +301,17 @@ def run_training(
         eos_id = tokenizer.eos_id()
 
         model.train()
-        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
         loss_fn = nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX)
 
         step_index = 0
+        best_epoch = 0
+        best_epoch_loss = float("inf")
         for epoch in range(1, epochs + 1):
             TRAINING_STATE.current_epoch = epoch
             epoch_records = list(tokenized_records)
             random.shuffle(epoch_records)
+            epoch_losses: list[float] = []
             for batch_start in range(0, len(epoch_records), batch_size):
                 batch_records = epoch_records[batch_start : batch_start + batch_size]
                 batch_tensors = _batch_records(
@@ -434,13 +332,18 @@ def run_training(
                 loss.backward()
                 optimizer.step()
                 step_index += 1
+                loss_value = float(loss.item())
+                epoch_losses.append(loss_value)
                 TRAINING_STATE.current_step = step_index
-                TRAINING_STATE.loss = float(loss.item())
-                TRAINING_STATE.loss_history.append(float(loss.item()))
+                TRAINING_STATE.loss = loss_value
+                TRAINING_STATE.loss_history.append(loss_value)
                 _update_metrics()
 
-        evaluation = _evaluate_model(records, config, model, tokenizer)
-        TRAINING_STATE.apply_evaluation_summary(evaluation)
+            if epoch_losses:
+                epoch_loss = sum(epoch_losses) / len(epoch_losses)
+                if epoch_loss < best_epoch_loss:
+                    best_epoch = epoch
+                    best_epoch_loss = epoch_loss
 
         model_path.parent.mkdir(parents=True, exist_ok=True)
         if tokenizer_path != tokenizer_prefix.with_suffix(".model"):
@@ -448,26 +351,48 @@ def run_training(
                 tokenizer_path,
                 tokenizer_prefix,
             )
-        torch.save(
-            {
-                "config": config.__dict__,
-                "state_dict": model.state_dict(),
-                "prompt_format": PROMPT_FORMAT_VERSION,
-                "tokenizer_sha1": _file_sha1(tokenizer_path),
-                "dataset_path": str(dataset_path),
-                "dataset_sha1": dataset_sha1,
-                "dataset_row_count": len(records),
-                "output_root_dir": str(resolved_output_root),
-                "artifact_name": normalized_artifact_name,
-                "evaluation": evaluation,
-            },
-            model_path,
-        )
+        checkpoint_payload = {
+            "config": config.__dict__,
+            "state_dict": model.state_dict(),
+            "prompt_format": PROMPT_FORMAT_VERSION,
+            "output_format": DEFAULT_OUTPUT_FORMAT,
+            "tokenizer_sha1": _file_sha1(tokenizer_path),
+            "dataset_path": str(dataset_path),
+            "dataset_sha1": dataset_sha1,
+            "dataset_row_count": len(records),
+            "output_root_dir": str(resolved_output_root),
+            "artifact_name": normalized_artifact_name,
+            "best_epoch": best_epoch,
+            "best_epoch_loss": best_epoch_loss,
+            "evaluation": {},
+        }
+        torch.save(checkpoint_payload, model_path)
+        try:
+            evaluation_summary = evaluate_holdout(
+                records,
+                model_path,
+                tokenizer_path,
+            )
+        except Exception as exc:
+            evaluation_summary = {
+                "mode": "unique_holdout",
+                "error": str(exc),
+                "eval_total": 0,
+                "eval_valid": 0,
+                "eval_exact": 0,
+                "eval_positive_total": 0,
+                "eval_positive_exact": 0,
+                "eval_fallback_total": 0,
+                "eval_fallback_exact": 0,
+            }
+        checkpoint_payload["evaluation"] = evaluation_summary
+        torch.save(checkpoint_payload, model_path)
+        TRAINING_STATE.apply_evaluation_summary(evaluation_summary)
         TRAINING_STATE.update(
             checkpoint_path=str(model_path),
-            status="completed",
             model_path=str(model_path),
             tokenizer_path=str(tokenizer_path),
+            status="completed",
         )
         return TRAINING_STATE.to_dict()
     except Exception as exc:
@@ -488,6 +413,7 @@ def start_training_job(
     hidden_dim: int = 64,
     num_layers: int = 2,
     num_heads: int = 4,
+    learning_rate: float = 1e-3,
 ) -> dict:
     if TRAINING_STATE.status == "running":
         return TRAINING_STATE.to_dict()
@@ -531,6 +457,7 @@ def start_training_job(
             "hidden_dim": hidden_dim,
             "num_layers": num_layers,
             "num_heads": num_heads,
+            "learning_rate": learning_rate,
         },
         daemon=True,
     )

@@ -40,7 +40,7 @@ def _schema_ok(arguments: dict[str, Any], tool: ToolDefinition, strict_mode: boo
 
 
 def validate_model_output(
-    candidate_tools: list[ToolDefinition],
+    available_tools: list[ToolDefinition],
     raw_output: str,
     strict_mode: bool = True,
 ) -> ValidationResult:
@@ -66,7 +66,7 @@ def validate_model_output(
             False, payload, f"empty tool_calls must use {FALLBACK_TOOL_NAME}", "fallback"
         )
 
-    allowed_names = {tool.name: tool for tool in candidate_tools}
+    allowed_names = {tool.name: tool for tool in available_tools}
     saw_fallback = False
     for call in payload["tool_calls"]:
         if not isinstance(call, dict) or "name" not in call:
@@ -76,7 +76,7 @@ def validate_model_output(
         name = call["name"]
         if name not in allowed_names:
             return ValidationResult(
-                False, payload, "unknown tool outside candidate set", "fallback"
+                False, payload, "unknown tool outside available tools", "fallback"
             )
         arguments = call.get("arguments", {})
         if not isinstance(arguments, dict):

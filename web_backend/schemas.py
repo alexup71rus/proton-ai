@@ -153,6 +153,7 @@ class WorkspaceTrainingSettings(BaseModel):
     dataset_name: str = "routing.jsonl"
     epochs: int = 1
     batch_size: int = 1
+    learning_rate: float = 1e-3
 
 
 class WorkspaceTestSettings(BaseModel):
@@ -183,6 +184,7 @@ class TrainingStartPayload(BaseModel):
     hidden_dim: int | None = None
     num_layers: int | None = None
     num_heads: int | None = None
+    learning_rate: float | None = None
 
 
 class TrainingStatusResponse(BaseModel):
@@ -255,12 +257,10 @@ class TestResultPayload(BaseModel):
 
 
 class TestDebugPayload(BaseModel):
-    candidate_tools: list[str] = Field(default_factory=list)
     serialized_prompt: str = ""
     raw_model_output: str = ""
     repaired_output: str | None = None
     validator_result: dict[str, Any] = Field(default_factory=dict)
-    confidence: str = "low"
     final_action: str = "fallback"
 
 

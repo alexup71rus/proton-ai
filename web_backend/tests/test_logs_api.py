@@ -3,13 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import web_backend.app as app_module
-
-
 def test_get_logs_returns_human_friendly_rows(tmp_path: Path, monkeypatch, client) -> None:
     log_path = tmp_path / "router.jsonl"
     log_path.write_text(
-        '{"user_text":"make it quieter","candidate_tools":["speaker","light"],"model_output":"{\\"tool_calls\\":[]}","validation_error":"unknown tool","final_action":"fallback"}\n',
+        '{"user_text":"make it quieter","available_tools":["speaker","light"],"model_output":"{\\"tool_calls\\":[]}","validation_error":"unknown tool","final_action":"fallback"}\n',
         encoding="utf-8",
     )
     monkeypatch.setenv("PROTONX_ROUTER_LOG_FILE", str(log_path))
@@ -26,7 +23,7 @@ def test_get_logs_returns_human_friendly_rows(tmp_path: Path, monkeypatch, clien
 def test_post_logs_export_failed_cases_creates_dataset(tmp_path: Path, monkeypatch, client) -> None:
     log_path = tmp_path / "router.jsonl"
     log_path.write_text(
-        '{"user_text":"make it quieter","candidate_tools":["light"],"model_output":"{\\"tool_calls\\":[]}","validation_error":"unknown tool","final_action":"fallback"}\n',
+        '{"user_text":"make it quieter","available_tools":["light"],"model_output":"{\\"tool_calls\\":[]}","validation_error":"unknown tool","final_action":"fallback"}\n',
         encoding="utf-8",
     )
     tools_path = tmp_path / "tools.json"

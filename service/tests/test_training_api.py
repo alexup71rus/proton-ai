@@ -82,13 +82,16 @@ def test_train_start_accepts_config_and_eventually_completes(tmp_path):
     assert len(final_payload["dataset_sha1"]) == 40
     assert final_payload["output_root_dir"] == str(output_root_dir)
     assert final_payload["artifact_name"] == "custom_router"
-    assert final_payload["eval_total"] == 1
-    assert final_payload["eval_fallback_total"] == 1
+    assert final_payload["eval_total"] >= 1
+    assert final_payload["eval_fallback_total"] == final_payload["eval_total"]
     assert final_payload["model_path"].endswith("/weights/custom_router.pt")
 
     checkpoint = torch.load(Path(final_payload["model_path"]), map_location="cpu")
     assert checkpoint["config"]["hidden_dim"] == 32
     assert checkpoint["config"]["num_layers"] == 1
+    assert checkpoint["output_format"] == "call-v1"
+    assert checkpoint["evaluation"]["mode"] == "unique_holdout"
+    assert checkpoint["evaluation"]["eval_total"] == final_payload["eval_total"]
 
 
 def test_train_start_rejects_invalid_dataset_before_training(tmp_path):

@@ -125,6 +125,10 @@ def _coalesce_int(value: int | None, fallback: int) -> int:
     return fallback if value is None else value
 
 
+def _coalesce_float(value: float | None, fallback: float) -> float:
+    return fallback if value is None else value
+
+
 def _extract_tool_response(execution: dict | None) -> str | None:
     if not execution or execution.get("error"):
         return None
@@ -398,6 +402,7 @@ def start_training(payload: TrainingStartPayload) -> TrainingStatusResponse:
     hidden_dim = _coalesce_int(payload.hidden_dim, selected_model.hidden_dim)
     num_layers = _coalesce_int(payload.num_layers, selected_model.num_layers)
     num_heads = _coalesce_int(payload.num_heads, selected_model.num_heads)
+    learning_rate = _coalesce_float(payload.learning_rate, training_settings.learning_rate)
 
     if "resume_model_path" in payload_fields:
         resume_model_path = payload.resume_model_path
@@ -431,6 +436,7 @@ def start_training(payload: TrainingStartPayload) -> TrainingStatusResponse:
                 "dataset_name": dataset_name,
                 "epochs": epochs,
                 "batch_size": batch_size,
+                "learning_rate": learning_rate,
             },
             "selected_model": {
                 "mode": "loaded" if resume_model_path and resume_tokenizer_path else "new",
@@ -464,6 +470,7 @@ def start_training(payload: TrainingStartPayload) -> TrainingStatusResponse:
             "hidden_dim": hidden_dim,
             "num_layers": num_layers,
             "num_heads": num_heads,
+            "learning_rate": learning_rate,
         },
         )
     )
@@ -516,12 +523,10 @@ def run_test(payload: TestPayload) -> TestResponse:
             "execution": execution,
         },
         debug={
-            "candidate_tools": debug_payload.get("candidate_tools", []),
             "serialized_prompt": debug_payload.get("serialized_prompt", ""),
             "raw_model_output": debug_payload.get("model_output", ""),
             "repaired_output": debug_payload.get("repaired_output"),
             "validator_result": debug_payload.get("validator_result", {}),
-            "confidence": debug_payload.get("confidence", "low"),
             "final_action": debug_payload.get("final_action", "fallback"),
         },
     )

@@ -17,17 +17,17 @@ def test_validator_rejects_unknown_tool():
         )
     ]
     result = validate_model_output(
-        candidate_tools=tools,
+        available_tools=tools,
         raw_output='{"tool_calls":[{"name":"lamp","arguments":{"state":"on"}}]}',
     )
     assert result.valid is False
-    assert result.error == "unknown tool outside candidate set"
+    assert result.error == "unknown tool outside available tools"
 
 
 def test_validator_accepts_fallback_payload():
     tools = [build_fallback_tool()]
     result = validate_model_output(
-        candidate_tools=tools,
+        available_tools=tools,
         raw_output='{"tool_calls":[{"name":"__fallback__","arguments":{}}]}',
     )
     assert result.valid is True
@@ -49,7 +49,7 @@ def test_validator_rejects_fallback_tool_combined_with_other_calls():
         ),
     ]
     result = validate_model_output(
-        candidate_tools=tools,
+        available_tools=tools,
         raw_output='{"tool_calls":[{"name":"__fallback__","arguments":{}},{"name":"light","arguments":{"state":"on"}}]}',
     )
     assert result.valid is False
@@ -59,7 +59,7 @@ def test_validator_rejects_fallback_tool_combined_with_other_calls():
 def test_validator_rejects_empty_tool_calls_without_fallback():
     tools = []
     result = validate_model_output(
-        candidate_tools=tools,
+        available_tools=tools,
         raw_output='{"tool_calls":[]}',
     )
     assert result.valid is False
@@ -69,7 +69,7 @@ def test_validator_rejects_empty_tool_calls_without_fallback():
 def test_validator_rejects_unexpected_top_level_fields():
     tools = [build_fallback_tool()]
     result = validate_model_output(
-        candidate_tools=tools,
+        available_tools=tools,
         raw_output='{"tool_calls":[{"name":"__fallback__","arguments":{}}],"response":"nope"}',
     )
 
@@ -91,7 +91,7 @@ def test_validator_rejects_argument_outside_enum():
         )
     ]
     result = validate_model_output(
-        candidate_tools=tools,
+        available_tools=tools,
         raw_output='{"tool_calls":[{"name":"light","arguments":{"state":"dim"}}]}',
     )
     assert result.valid is False
