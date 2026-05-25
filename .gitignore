@@ -5,12 +5,14 @@ data/models/*
 data/tokenizers/*
 data/tools/*
 data/.gitkeep
+data/workspace/settings.json
 data/workspace/training_*.json
 !data/train/.gitkeep
 !data/weights/.gitkeep
 !data/models/.gitkeep
 !data/tokenizers/.gitkeep
 !data/tools/.gitkeep
+!data/workspace/settings.example.json
 
 # Model artifacts
 *.gguf

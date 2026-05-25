@@ -252,7 +252,7 @@ def test_build_examples_include_seed_training_tools_as_target_classes():
     assert "docker_list_containers" in target_names
     assert "git_status" in target_names
     assert any("контейнер" in row["user"].lower() for row in docker_rows)
-    assert any("статус git" in row["user"].lower() for row in git_rows)
+    assert any("статус гита" in row["user"].lower() for row in git_rows)
 
 
 def test_build_examples_include_unavailable_tool_family_fallback_rows():
@@ -271,8 +271,8 @@ def test_build_examples_include_unavailable_tool_family_fallback_rows():
         for row in rows
         if row["assistant"]["tool_calls"][0]["name"] == FALLBACK_TOOL_NAME
     ]
-    git_rows = [row for row in fallback_rows if row["user"] == "покажи статус git"]
-    docker_rows = [row for row in fallback_rows if row["user"] == "покажи контейнеры docker"]
+    git_rows = [row for row in fallback_rows if row["user"] == "покажи статус гита"]
+    docker_rows = [row for row in fallback_rows if row["user"] == "покажи контейнеры докера"]
 
     assert git_rows
     assert docker_rows

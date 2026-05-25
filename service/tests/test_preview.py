@@ -55,8 +55,8 @@ def test_route_preview_returns_full_pipeline_fields(monkeypatch):
     assert payload["final_action"] == "tool_call"
     assert payload["final_output"] == {"tool_calls": [{"name": "light", "arguments": {"state": "on"}}]}
     assert payload["validation_error"] is None
-    assert payload["serialized_prompt"].startswith("TOOLS:\n")
-    assert "USER:\nturn on the lamp\nOUTPUT:\n" in payload["serialized_prompt"]
+    assert payload["serialized_prompt"].startswith("ИНСТРУМЕНТЫ:\n")
+    assert "ПОЛЬЗОВАТЕЛЬ:\nturn on the lamp\nОТВЕТ:\n" in payload["serialized_prompt"]
 
 
 def test_route_preview_uses_request_scoped_model_paths(monkeypatch, tmp_path):
@@ -157,7 +157,7 @@ def test_route_preview_routes_single_zero_argument_tool_via_model(monkeypatch):
     assert payload["final_action"] == "tool_call"
     assert payload["final_output"] == {"tool_calls": [{"name": "list_downloads", "arguments": {}}]}
     assert payload["validation_error"] is None
-    assert payload["serialized_prompt"].startswith("TOOLS:\n")
+    assert payload["serialized_prompt"].startswith("ИНСТРУМЕНТЫ:\n")
     assert payload["model_output"] == '{"tool_calls":[{"name":"list_downloads","arguments":{}}]}'
 
 
@@ -238,7 +238,7 @@ def test_route_preview_routes_best_zero_argument_tool_via_model(monkeypatch):
     assert payload["validator_result"]["valid"] is True
     assert payload["final_action"] == "tool_call"
     assert payload["validation_error"] is None
-    assert payload["serialized_prompt"].startswith("TOOLS:\n")
+    assert payload["serialized_prompt"].startswith("ИНСТРУМЕНТЫ:\n")
     assert payload["model_output"] == '{"tool_calls":[{"name":"get_node_version","arguments":{}}]}'
 
 

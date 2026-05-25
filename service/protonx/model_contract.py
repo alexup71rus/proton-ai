@@ -14,17 +14,16 @@ from typing import Any
 from protonx.schemas import JsonSchema, ToolDefinition
 
 
-PROMPT_FORMAT_VERSION = "compact-v2"
+PROMPT_FORMAT_VERSION = "compact-ru-v1"
 FALLBACK_TOOL_NAME = "__fallback__"
 FALLBACK_TOOL_TAGS = [
-    "fallback",
-    "no tool",
-    "unsupported",
-    "unknown",
-    "ambiguous",
-    "chat",
+    "нет инструмента",
+    "неподдерживаемый запрос",
+    "неизвестный запрос",
+    "двусмысленный запрос",
+    "общение",
 ]
-FALLBACK_MESSAGE = "I work only with available tools."
+FALLBACK_MESSAGE = "Я работаю только с доступными инструментами."
 
 
 def build_fallback_tool() -> ToolDefinition:
@@ -216,4 +215,4 @@ def _format_tool_line(tool: dict[str, Any]) -> str:
 
 def serialize_compact_prompt(tools: list[dict[str, Any]], user_text: str) -> str:
     rendered_tools = "\n".join(_format_tool_line(tool) for tool in tools) or "- none"
-    return f"TOOLS:\n{rendered_tools}\nUSER:\n{user_text}\nOUTPUT:\n"
+    return f"ИНСТРУМЕНТЫ:\n{rendered_tools}\nПОЛЬЗОВАТЕЛЬ:\n{user_text}\nОТВЕТ:\n"

@@ -73,7 +73,8 @@ create tools -> choose dataset -> train -> test -> inspect logs -> improve datas
 - **Test** — проверка маршрутизации и executor output.
 - **Logs** — fallback/error cases для улучшения dataset.
 
-Состояние UI хранится на backend в [data/workspace/settings.json](data/workspace/settings.json).
+Состояние UI хранится на backend в локальном `data/workspace/settings.json`.
+Этот файл не коммитится; пример структуры лежит в [data/workspace/settings.example.json](data/workspace/settings.example.json).
 
 ## Проверка
 

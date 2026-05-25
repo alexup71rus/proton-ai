@@ -107,4 +107,4 @@ def test_chat_completions_returns_response_for_fallback_tool_when_answers_are_al
     assert response.status_code == 200
     assert payload["tool_calls"] == []
     assert payload["fallback"] is True
-    assert payload["response"] == "I work only with available tools."
+    assert payload["response"] == "Я работаю только с доступными инструментами."

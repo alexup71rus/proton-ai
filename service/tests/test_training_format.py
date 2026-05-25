@@ -14,7 +14,7 @@ def test_serialize_training_parts_uses_full_json_target_by_default() -> None:
 
     prompt, assistant = serialize_training_parts(record)
 
-    assert prompt.startswith("TOOLS:\n")
+    assert prompt.startswith("ИНСТРУМЕНТЫ:\n")
     assert assistant == '{"tool_calls":[{"name":"get_node_version","arguments":{}}]}'
 
 
