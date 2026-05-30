@@ -7,7 +7,7 @@ from typing import Any
 from protonx.config import DATA_DIR
 
 
-MAX_PUBLIC_LOSS_HISTORY_POINTS = 1000
+MAX_PUBLIC_LOSS_HISTORY_POINTS = 500
 
 
 def _field_default_value(state_field) -> Any:

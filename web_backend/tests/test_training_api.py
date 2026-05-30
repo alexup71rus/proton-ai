@@ -54,7 +54,7 @@ def test_get_training_status_downsamples_large_loss_history(monkeypatch, client)
     assert response.status_code == 200
     payload = response.json()
     assert payload["loss_history_total"] == 2500
-    assert len(payload["loss_history"]) == 1000
+    assert len(payload["loss_history"]) == 500
 
 
 def test_post_training_start_forwards_config(tmp_path: Path, monkeypatch, client) -> None:

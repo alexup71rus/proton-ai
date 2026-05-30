@@ -115,11 +115,66 @@ select {
   background: rgba(91, 124, 250, 0.12);
 }
 
+.loss-chart-wrap {
+  position: relative;
+}
+
 .loss-chart {
-  color: var(--mantine-color-indigo-3);
   display: block;
-  height: 180px;
+  height: 220px;
   width: 100%;
+}
+
+.loss-chart__line {
+  stroke: var(--mantine-color-indigo-3);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+}
+
+.loss-chart__epoch-line {
+  opacity: 0.7;
+  stroke: var(--mantine-color-dark-3);
+  stroke-dasharray: 8 8;
+  stroke-width: 2;
+}
+
+.loss-chart__epoch-label {
+  fill: var(--mantine-color-dimmed);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.loss-chart__hover-line {
+  stroke: var(--mantine-color-gray-2);
+  stroke-width: 2;
+}
+
+.loss-chart__hover-dot {
+  fill: var(--mantine-color-dark-7);
+  stroke: var(--mantine-color-indigo-2);
+  stroke-width: 4;
+}
+
+.loss-chart-tooltip {
+  background: rgba(17, 19, 24, 0.96);
+  border: 1px solid var(--mantine-color-dark-3);
+  border-radius: var(--mantine-radius-sm);
+  box-shadow: var(--mantine-shadow-md);
+  color: var(--mantine-color-gray-2);
+  font-size: 12px;
+  line-height: 1.35;
+  min-width: 150px;
+  padding: 8px 10px;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  z-index: 2;
+}
+
+.loss-chart-tooltip__value {
+  color: var(--mantine-color-gray-0);
+  font-weight: 700;
 }
 
 .json-block {

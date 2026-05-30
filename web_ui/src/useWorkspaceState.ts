@@ -33,6 +33,7 @@ export function defaultWorkspaceModel(): WorkspaceModel {
 
 export function defaultTrainingSettings(): WorkspaceTrainingSettings {
   return {
+    dataset_dir: "data/train/routing",
     dataset_name: "routing.jsonl",
     epochs: 1,
     batch_size: 1,

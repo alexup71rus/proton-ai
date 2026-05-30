@@ -37,6 +37,33 @@ def test_get_datasets_lists_known_jsonl_files(tmp_path: Path, monkeypatch, clien
     assert payload["datasets"][0]["validation_status"] == "valid"
 
 
+def test_get_datasets_uses_workspace_dataset_dir(tmp_path: Path, monkeypatch, client) -> None:
+    dataset_dir = tmp_path / "selected"
+    dataset_dir.mkdir()
+    (dataset_dir / "routing.jsonl").write_bytes(_valid_dataset_line())
+    workspace_path = tmp_path / "workspace.json"
+    workspace_path.write_text(
+        json.dumps(
+            {
+                "training": {
+                    "dataset_dir": str(dataset_dir),
+                    "dataset_name": "routing.jsonl",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("PROTONX_DATASET_DIR", raising=False)
+    monkeypatch.setenv("PROTONX_WORKSPACE_FILE", str(workspace_path))
+
+    response = client.get("/api/datasets")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["dataset_dir"] == str(dataset_dir)
+    assert payload["datasets"][0]["name"] == "routing.jsonl"
+
+
 def test_post_dataset_import_saves_uploaded_file(tmp_path: Path, monkeypatch, client) -> None:
     monkeypatch.setenv("PROTONX_DATASET_DIR", str(tmp_path))
 

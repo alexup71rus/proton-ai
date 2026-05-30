@@ -137,6 +137,7 @@ export interface WorkspaceModel {
 
 
 export interface WorkspaceTrainingSettings {
+  dataset_dir: string;
   dataset_name: string;
   epochs: number;
   batch_size: number;

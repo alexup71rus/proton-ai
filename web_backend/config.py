@@ -1,10 +1,36 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_DATASET_DIR = ROOT_DIR / "data" / "train" / "routing"
+
+
+def _resolve_project_path(path: str | Path) -> Path:
+    candidate = Path(path).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    return ROOT_DIR / candidate
+
+
+def _workspace_dataset_dir() -> str | None:
+    workspace_path = get_workspace_settings_file()
+    if not workspace_path.exists():
+        return None
+    try:
+        raw = json.loads(workspace_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    training = raw.get("training")
+    if not isinstance(training, dict):
+        return None
+    dataset_dir = training.get("dataset_dir")
+    if not isinstance(dataset_dir, str) or not dataset_dir.strip():
+        return None
+    return dataset_dir
 
 
 def get_tools_file() -> Path:
@@ -12,7 +38,10 @@ def get_tools_file() -> Path:
 
 
 def get_dataset_dir() -> Path:
-    return Path(os.getenv("PROTONX_DATASET_DIR", ROOT_DIR / "data" / "train" / "routing"))
+    env_dataset_dir = os.getenv("PROTONX_DATASET_DIR")
+    if env_dataset_dir:
+        return _resolve_project_path(env_dataset_dir)
+    return _resolve_project_path(_workspace_dataset_dir() or DEFAULT_DATASET_DIR)
 
 
 def get_log_file() -> Path:

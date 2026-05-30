@@ -13,7 +13,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { IconAlertCircle, IconDownload, IconRefresh, IconRosetteDiscountCheck, IconUpload } from "@tabler/icons-react";
+import { IconAlertCircle, IconDownload, IconFolder, IconRefresh, IconRosetteDiscountCheck, IconUpload } from "@tabler/icons-react";
 
 import {
   fetchDatasets,
@@ -27,8 +27,8 @@ import {
   type WorkspaceModel,
   type WorkspaceTrainingSettings,
 } from "../api";
+import { DirectoryPickerModal } from "../components/DirectoryPickerModal";
 import { TrainingProgress } from "../components/TrainingProgress";
-
 
 type Notice = {
   tone: "green" | "red" | "blue";
@@ -107,10 +107,13 @@ export function DatasetTrainingRoute({
   const [notice, setNotice] = useState<Notice | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [isImportingDataset, setIsImportingDataset] = useState(false);
+  const [isSwitchingDatasetDir, setIsSwitchingDatasetDir] = useState(false);
+  const [datasetPickerOpen, setDatasetPickerOpen] = useState(false);
   const [datasetDir, setDatasetDir] = useState("");
   const onModelResolvedRef = useRef(onModelResolved);
 
   const selectedDataset = trainingSettings.dataset_name;
+  const datasetStoragePath = datasetDir || trainingSettings.dataset_dir || "data/train/routing";
   const selectedDatasetDetails = datasets.find((dataset) => dataset.name === selectedDataset) ?? null;
   const isRunning = status?.status === "running";
   const canStartTraining = Boolean(
@@ -222,6 +225,47 @@ export function DatasetTrainingRoute({
         ...trainingSettings,
         dataset_name: nextSelectedDataset,
       });
+    }
+  }
+
+  async function handleDatasetDirSelect(path: string) {
+    if (isRunning) {
+      return;
+    }
+
+    setIsSwitchingDatasetDir(true);
+    setNotice(null);
+    const nextSettings = {
+      ...trainingSettings,
+      dataset_dir: path,
+      dataset_name: "",
+    };
+
+    try {
+      await onTrainingSettingsChange(nextSettings);
+      const payload = await fetchDatasets();
+      const nextSelectedDataset = payload.datasets[0]?.name ?? "";
+      setDatasets(payload.datasets);
+      setDatasetDir(payload.dataset_dir);
+      if (nextSelectedDataset) {
+        await onTrainingSettingsChange({
+          ...nextSettings,
+          dataset_name: nextSelectedDataset,
+        });
+      }
+      setNotice({
+        tone: "blue",
+        title: "Dataset storage updated",
+        body: compactPath(payload.dataset_dir),
+      });
+    } catch (error) {
+      setNotice({
+        tone: "red",
+        title: "Dataset storage failed",
+        body: error instanceof Error ? error.message : "Unknown error.",
+      });
+    } finally {
+      setIsSwitchingDatasetDir(false);
     }
   }
 
@@ -356,7 +400,7 @@ export function DatasetTrainingRoute({
         <div>
           <Title order={2}>Training</Title>
           <Text c="dimmed" size="sm">
-            {datasets.length} dataset files{datasetDir ? ` · ${compactPath(datasetDir)}` : ""}
+            {datasets.length} dataset files
           </Text>
         </div>
         <Badge color={isRunning ? "blue" : "gray"}>{isRunning ? "running" : "idle"}</Badge>
@@ -371,11 +415,18 @@ export function DatasetTrainingRoute({
               <Group justify="space-between">
                 <div>
                   <Title order={3}>Dataset</Title>
-                  {datasetDir ? (
-                    <Text size="sm" c="dimmed">Stored in {compactPath(datasetDir)}</Text>
-                  ) : null}
+                  <Text size="sm" c="dimmed">Storage: {compactPath(datasetStoragePath)}</Text>
                 </div>
                 <Group gap="xs">
+                  <Button
+                    variant="default"
+                    leftSection={<IconFolder size={16} />}
+                    loading={isSwitchingDatasetDir}
+                    disabled={isRunning}
+                    onClick={() => setDatasetPickerOpen(true)}
+                  >
+                    Browse
+                  </Button>
                   <FileButton onChange={(file) => void handleImportDataset(file)} accept=".jsonl,application/json,text/plain">
                     {(props) => (
                       <Button
@@ -508,6 +559,14 @@ export function DatasetTrainingRoute({
 
         <TrainingProgress status={status} />
       </div>
+
+      <DirectoryPickerModal
+        opened={datasetPickerOpen}
+        initialPath={datasetStoragePath}
+        title="Choose dataset storage"
+        onClose={() => setDatasetPickerOpen(false)}
+        onSelect={(path) => void handleDatasetDirSelect(path)}
+      />
     </Stack>
   );
 }

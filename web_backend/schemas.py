@@ -21,7 +21,7 @@ def _coalesce_training_status_value(value: Any, fallback: Any) -> Any:
     return value or fallback
 
 
-def _downsample_loss_history(values: list[float], max_points: int = 1000) -> list[float]:
+def _downsample_loss_history(values: list[float], max_points: int = 500) -> list[float]:
     if max_points <= 0 or len(values) <= max_points:
         return list(values)
 
@@ -175,6 +175,7 @@ class WorkspaceModelSettings(BaseModel):
 
 
 class WorkspaceTrainingSettings(BaseModel):
+    dataset_dir: str = "data/train/routing"
     dataset_name: str = "routing.jsonl"
     epochs: int = 1
     batch_size: int = 1

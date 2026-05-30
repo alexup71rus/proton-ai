@@ -15,6 +15,7 @@ def test_get_workspace_creates_default_file(tmp_path: Path, monkeypatch, client)
     assert payload["storage_path"] == str(workspace_path)
     assert payload["selected_model"]["artifact_name"] == "tiny_router_v1"
     assert payload["training"] == {
+        "dataset_dir": "data/train/routing",
         "dataset_name": "routing.jsonl",
         "epochs": 1,
         "batch_size": 1,
@@ -48,6 +49,7 @@ def test_put_workspace_persists_settings(tmp_path: Path, monkeypatch, client) ->
                 "num_heads": 8,
             },
             "training": {
+                "dataset_dir": str(tmp_path / "datasets"),
                 "dataset_name": "custom.jsonl",
                 "epochs": 4,
                 "batch_size": 2,
@@ -70,6 +72,7 @@ def test_put_workspace_persists_settings(tmp_path: Path, monkeypatch, client) ->
 
     saved = json.loads(workspace_path.read_text(encoding="utf-8"))
     assert saved["selected_model"]["model_path"] == "/tmp/custom_router.pt"
+    assert saved["training"]["dataset_dir"] == str(tmp_path / "datasets")
     assert saved["training"]["dataset_name"] == "custom.jsonl"
     assert saved["test"]["show_debug"] is True
 
