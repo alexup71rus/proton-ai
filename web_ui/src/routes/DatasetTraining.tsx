@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Card,
+  FileButton,
   Group,
   NumberInput,
   Select,
@@ -12,12 +13,13 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { IconAlertCircle, IconDownload, IconRefresh, IconRosetteDiscountCheck } from "@tabler/icons-react";
+import { IconAlertCircle, IconDownload, IconRefresh, IconRosetteDiscountCheck, IconUpload } from "@tabler/icons-react";
 
 import {
   fetchDatasets,
   fetchTrainingStatus,
   getDatasetDownloadUrl,
+  importDataset,
   startTraining,
   validateDataset,
   type DatasetSummary,
@@ -104,6 +106,8 @@ export function DatasetTrainingRoute({
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const [isImportingDataset, setIsImportingDataset] = useState(false);
+  const [datasetDir, setDatasetDir] = useState("");
   const onModelResolvedRef = useRef(onModelResolved);
 
   const selectedDataset = trainingSettings.dataset_name;
@@ -140,6 +144,7 @@ export function DatasetTrainingRoute({
         ? selectedDataset
         : datasetsPayload.datasets[0]?.name || "";
       setDatasets(datasetsPayload.datasets);
+      setDatasetDir(datasetsPayload.dataset_dir);
       setStatus(statusPayload);
       setLoadState("ready");
       if (nextSelectedDataset && nextSelectedDataset !== selectedDataset) {
@@ -208,6 +213,7 @@ export function DatasetTrainingRoute({
   async function reloadDatasets(preserveSelection = true) {
     const payload = await fetchDatasets();
     setDatasets(payload.datasets);
+    setDatasetDir(payload.dataset_dir);
     const nextSelectedDataset = preserveSelection && payload.datasets.some((dataset) => dataset.name === selectedDataset)
       ? selectedDataset
       : payload.datasets[0]?.name ?? "";
@@ -240,6 +246,38 @@ export function DatasetTrainingRoute({
         title: "Validation failed",
         body: error instanceof Error ? error.message : "Unknown error.",
       });
+    }
+  }
+
+  async function handleImportDataset(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setIsImportingDataset(true);
+    setNotice(null);
+    try {
+      const payload = await importDataset(file);
+      const datasetsPayload = await fetchDatasets();
+      setDatasets(datasetsPayload.datasets);
+      setDatasetDir(datasetsPayload.dataset_dir);
+      await onTrainingSettingsChange({
+        ...trainingSettings,
+        dataset_name: payload.dataset.name,
+      });
+      setNotice({
+        tone: "green",
+        title: "Dataset imported",
+        body: `${payload.dataset.name}: ${payload.dataset.row_count} rows.`,
+      });
+    } catch (error) {
+      setNotice({
+        tone: "red",
+        title: "Dataset import failed",
+        body: error instanceof Error ? error.message : "Unknown error.",
+      });
+    } finally {
+      setIsImportingDataset(false);
     }
   }
 
@@ -317,7 +355,9 @@ export function DatasetTrainingRoute({
       <Group justify="space-between" align="flex-end">
         <div>
           <Title order={2}>Training</Title>
-          <Text c="dimmed" size="sm">{datasets.length} dataset files</Text>
+          <Text c="dimmed" size="sm">
+            {datasets.length} dataset files{datasetDir ? ` · ${compactPath(datasetDir)}` : ""}
+          </Text>
         </div>
         <Badge color={isRunning ? "blue" : "gray"}>{isRunning ? "running" : "idle"}</Badge>
       </Group>
@@ -329,10 +369,30 @@ export function DatasetTrainingRoute({
           <Card>
             <Stack>
               <Group justify="space-between">
-                <Title order={3}>Dataset</Title>
-                <Button variant="default" leftSection={<IconRefresh size={16} />} onClick={() => void reloadDatasets()}>
-                  Refresh
-                </Button>
+                <div>
+                  <Title order={3}>Dataset</Title>
+                  {datasetDir ? (
+                    <Text size="sm" c="dimmed">Stored in {compactPath(datasetDir)}</Text>
+                  ) : null}
+                </div>
+                <Group gap="xs">
+                  <FileButton onChange={(file) => void handleImportDataset(file)} accept=".jsonl,application/json,text/plain">
+                    {(props) => (
+                      <Button
+                        {...props}
+                        variant="light"
+                        leftSection={<IconUpload size={16} />}
+                        loading={isImportingDataset}
+                        disabled={isRunning}
+                      >
+                        Import
+                      </Button>
+                    )}
+                  </FileButton>
+                  <Button variant="default" leftSection={<IconRefresh size={16} />} onClick={() => void reloadDatasets()}>
+                    Refresh
+                  </Button>
+                </Group>
               </Group>
 
               <Select

@@ -31,6 +31,7 @@ def test_get_datasets_lists_known_jsonl_files(tmp_path: Path, monkeypatch, clien
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["dataset_dir"] == str(tmp_path)
     assert payload["datasets"][0]["name"] == "routing.jsonl"
     assert payload["datasets"][0]["row_count"] == 1
     assert payload["datasets"][0]["validation_status"] == "valid"

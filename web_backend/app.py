@@ -17,6 +17,7 @@ from web_backend.datasets import (
     create_manual_dataset,
     delete_dataset,
     duplicate_dataset,
+    ensure_dataset_dir,
     get_dataset_preview,
     get_dataset_validation_report,
     import_dataset_file,
@@ -355,7 +356,10 @@ def validate_tools(payload: ToolsPayload) -> dict:
 
 @app.get("/api/datasets", response_model=DatasetsResponse)
 def get_datasets() -> DatasetsResponse:
-    return DatasetsResponse(datasets=[summarize_dataset(path) for path in list_dataset_files()])
+    return DatasetsResponse(
+        datasets=[summarize_dataset(path) for path in list_dataset_files()],
+        dataset_dir=str(ensure_dataset_dir()),
+    )
 
 
 @app.post("/api/datasets/import", response_model=ImportDatasetResponse)

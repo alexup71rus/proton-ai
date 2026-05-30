@@ -58,6 +58,7 @@ export interface DatasetSummary {
 
 export interface DatasetsResponse {
   datasets: DatasetSummary[];
+  dataset_dir: string;
 }
 
 

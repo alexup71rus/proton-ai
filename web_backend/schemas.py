@@ -82,6 +82,7 @@ class DatasetSummary(BaseModel):
 
 class DatasetsResponse(BaseModel):
     datasets: list[DatasetSummary] = Field(default_factory=list)
+    dataset_dir: str = ""
 
 
 class DatasetValidationIssue(BaseModel):

@@ -89,11 +89,13 @@ export function ToolList({ tools, selectedIndex, dirty, onSelect, onAdd }: ToolL
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
           <div>
-            <Title order={3}>Tools</Title>
-            <Group gap={6} mt={4}>
+            <Group gap={8} align="center">
+              <Title order={3}>Tools</Title>
               <Badge variant="light">
-                {filteredTools.length === tools.length ? `${tools.length} tools` : `${filteredTools.length} / ${tools.length}`}
+                {filteredTools.length === tools.length ? tools.length : `${filteredTools.length} / ${tools.length}`}
               </Badge>
+            </Group>
+            <Group gap={6} mt={6}>
               {dirty ? <Badge color="yellow">unsaved</Badge> : null}
             </Group>
           </div>
