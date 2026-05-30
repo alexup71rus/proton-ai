@@ -39,7 +39,6 @@ function resultColor(result: string): string {
 
 export function LogCard({ row }: LogCardProps) {
   const [rawOpen, setRawOpen] = useState(false);
-  const visibleCandidates = row.candidates.filter((candidate) => candidate !== "__fallback__");
   const hasError = Boolean(row.error && row.error !== "none");
   const showResultBadge = row.result && row.result !== "fallback";
 
@@ -55,14 +54,6 @@ export function LogCard({ row }: LogCardProps) {
             <Badge color={resultColor(row.result)}>{row.result.replace("_", " ")}</Badge>
           ) : null}
         </Group>
-
-        {visibleCandidates.length > 0 ? (
-          <Group gap={6}>
-            {visibleCandidates.map((candidate) => (
-              <Badge key={candidate} variant="light">{candidate}</Badge>
-            ))}
-          </Group>
-        ) : null}
 
         {hasError ? (
           <Card bg="dark.7">

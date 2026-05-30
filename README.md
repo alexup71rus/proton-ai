@@ -1,12 +1,10 @@
 # Proton AI
 
-Proton AI is an AI constructor for building small local tool-routing models. You define tools and executors, generate a supervised dataset, train a tiny router, and test structured tool calls in the web UI.
-
-The runtime model does not act as a general chat assistant. Its job is narrow: read a tools registry and user text, then return a valid `tool_calls` JSON object. Validation and execution stay in controlled code outside the model.
+Proton AI is an AI constructor for small local models with tool-calling support. It provides a ready environment for development and testing. Behavior is defined by the dataset: it can be a tool-call router, an AI model for any game, a small dialogue model, a classifier, or another specialized local scenario.
 
 Russian documentation: [README.ru.md](README.ru.md)
 
-## Model Contract
+## Included Tool-Calling Workflow
 
 ```text
 tools registry + user_text -> tool_calls JSON
@@ -24,17 +22,17 @@ Fallback is also a structured tool call:
 {"tool_calls":[{"name":"__fallback__","arguments":{}}]}
 ```
 
-The main product loop is:
+The general product loop is:
 
 ```text
-define tools -> build dataset -> train model -> test -> inspect logs -> improve dataset
+define task -> build dataset -> train model -> test -> inspect logs -> improve dataset
 ```
 
 ## Why This Exists
 
-Many automation systems require a user or developer to pick the exact command. Proton AI changes that step: the user writes a normal request, and a small trained model chooses from the allowed tools.
+Small local models often need the same product shell around them: a dataset format, training commands, model artifact management, a test surface, logs, and a way to improve the next dataset. Proton AI packages that loop into a local constructor instead of leaving every project to rebuild the same infrastructure.
 
-This is useful when the output must be a structured action rather than free-form text:
+The bundled tool-calling example is useful when the output must be a structured action rather than free-form text:
 
 - local automation commands;
 - internal API operation selection;
@@ -97,14 +95,26 @@ Local URLs:
 - `http://127.0.0.1:8100/health` - UI backend
 - `http://localhost:8501` - web UI
 
-The web UI pages are:
+The web UI currently includes pages for the bundled tool-calling workflow:
 
 - **Tools** - edit the tools registry and executor paths.
 - **Training** - import or generate datasets, validate them, and start training.
 - **Test** - run user text through the selected model and inspect validation/execution output.
 - **Logs** - inspect routing incidents and export failed cases into dataset drafts.
 
-## Build A Model
+## Screenshots
+
+| Tools | Training |
+| --- | --- |
+| ![Tools registry](assets/screen_1.png) | ![Training workflow](assets/screen_2.png) |
+| Tool registry, arguments, allowed values, and executors. | Dataset selection, training settings, run status, and loss curve. |
+
+| Test | Logs |
+| --- | --- |
+| ![Router test](assets/screen_3.png) | ![Routing logs](assets/screen_4.png) |
+| User request test with the resulting structured tool call. | Failed routing cases with raw model output for dataset improvement. |
+
+## Build The Example Router
 
 1. Add tools in the **Tools** page or edit `data/tools/tools.json`.
 2. Use safe, trusted `executor_path` values.

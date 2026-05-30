@@ -300,7 +300,6 @@ export interface TestResponse {
 export interface LogRow {
   created_at: string | null;
   user: string;
-  candidates: string[];
   raw_output_summary: string;
   raw_output: string;
   error: string;

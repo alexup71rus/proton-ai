@@ -32,7 +32,6 @@ def load_human_logs(limit: int = 100) -> list[dict[str, Any]]:
             {
                 "created_at": row.get("created_at") or row.get("timestamp"),
                 "user": row.get("user_text", ""),
-                "candidates": row.get("available_tools", []),
                 "raw_output_summary": textwrap.shorten(raw_output, width=120, placeholder="..."),
                 "raw_output": raw_output,
                 "error": row.get("validation_error") or "none",

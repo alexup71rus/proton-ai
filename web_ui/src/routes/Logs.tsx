@@ -27,7 +27,6 @@ export function LogsRoute() {
         row.error,
         row.result,
         row.raw_output_summary,
-        ...row.candidates,
       ].join(" ").toLowerCase();
       return haystack.includes(normalized);
     });

@@ -339,7 +339,6 @@ class TestResponse(BaseModel):
 class LogRow(BaseModel):
     created_at: str | None = None
     user: str
-    candidates: list[str] = Field(default_factory=list)
     raw_output_summary: str
     raw_output: str = ""
     error: str

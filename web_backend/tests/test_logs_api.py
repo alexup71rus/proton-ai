@@ -18,6 +18,7 @@ def test_get_logs_returns_human_friendly_rows(tmp_path: Path, monkeypatch, clien
     assert payload["rows"][0]["user"] == "make it quieter"
     assert payload["rows"][0]["result"] == "fallback"
     assert payload["rows"][0]["error"] == "unknown tool"
+    assert "candidates" not in payload["rows"][0]
 
 
 def test_delete_logs_clears_router_log_file(tmp_path: Path, monkeypatch, client) -> None:
