@@ -17,41 +17,160 @@ def _empty_schema() -> dict[str, Any]:
     }
 
 
+def _list_directory_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "directory": {
+                "type": "string",
+                "description": "Какую разрешённую директорию показать.",
+                "enum": [
+                    "downloads: папка загрузок текущего пользователя",
+                    "project_root: корень текущего проекта Proton-X",
+                    "service: FastAPI сервис модели в папке service",
+                    "web_backend: FastAPI backend для UI",
+                    "web_ui: React/Vite интерфейс оператора",
+                    "data: локальные данные, датасеты и артефакты проекта",
+                ],
+            }
+        },
+        "required": ["directory"],
+    }
+
+
+def _node_version_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "target": {
+                "type": "string",
+                "description": "Версию какого инструмента показать.",
+                "enum": [
+                    "node: версия Node.js через node --version",
+                    "npm: версия npm через npm --version",
+                ],
+            }
+        },
+        "required": ["target"],
+    }
+
+
+def _docker_list_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "state": {
+                "type": "string",
+                "description": "Показать только запущенные или все контейнеры.",
+                "enum": [
+                    "running: только запущенные контейнеры, docker ps",
+                    "all: все контейнеры включая остановленные, docker ps --all",
+                ],
+            }
+        },
+        "required": ["state"],
+    }
+
+
+def _http_head_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "target": {
+                "type": "string",
+                "description": "Какой разрешённый endpoint проверить.",
+                "enum": [
+                    "example_com: https://example.com для базовой проверки интернета",
+                    "pypi: https://pypi.org для проверки Python package index",
+                    "npm_registry: https://registry.npmjs.org для проверки npm registry",
+                    "github: https://github.com для проверки доступности GitHub",
+                ],
+            }
+        },
+        "required": ["target"],
+    }
+
+
 def get_default_tools() -> list[dict[str, Any]]:
     return [
         {
-            "name": "list_downloads",
-            "description": "List files and folders in the current user's Downloads directory.",
+            "name": "list_directory",
+            "description": "Показать файлы и папки в одной из разрешённых локальных директорий.",
             "tags": [
                 "downloads",
                 "downloads folder",
                 "download folder",
+                "project files",
+                "project root",
                 "files",
+                "directory listing",
                 "папка загрузок",
                 "загрузки",
                 "скачанные файлы",
+                "файлы проекта",
+                "список файлов",
+                "папка проекта",
             ],
-            "arguments_schema": _empty_schema(),
-            "executor_path": "web_backend/executors/list_downloads.py",
+            "arguments_schema": _list_directory_schema(),
+            "executor_path": "web_backend/executors/list_directory.py",
         },
         {
             "name": "get_node_version",
-            "description": "Read the installed Node.js version available on this machine.",
+            "description": "Показать установленную версию Node.js или npm на этой машине.",
             "tags": [
                 "node",
                 "node version",
                 "node js",
                 "nodejs",
                 "node.js",
+                "npm",
+                "npm version",
+                "npm -v",
                 "версия node",
                 "версия node js",
+                "версия npm",
+                "нода",
+                "нпм",
             ],
-            "arguments_schema": _empty_schema(),
+            "arguments_schema": _node_version_schema(),
             "executor_path": "web_backend/executors/get_node_version.py",
         },
         {
+            "name": "docker_list_containers",
+            "description": "Показать Docker-контейнеры через безопасный readonly docker ps.",
+            "tags": [
+                "docker",
+                "docker ps",
+                "containers",
+                "container list",
+                "докер",
+                "контейнеры",
+                "список контейнеров",
+                "запущенные контейнеры",
+            ],
+            "arguments_schema": _docker_list_schema(),
+            "executor_path": "web_backend/executors/docker_list_containers.py",
+        },
+        {
+            "name": "check_http_head",
+            "description": "Проверить доступность разрешённого публичного endpoint через readonly HTTP HEAD.",
+            "tags": [
+                "internet",
+                "http head",
+                "curl",
+                "connectivity",
+                "network check",
+                "интернет",
+                "подключение",
+                "проверить сайт",
+                "доступность сайта",
+            ],
+            "arguments_schema": _http_head_schema(),
+            "executor_path": "web_backend/executors/check_http_head.py",
+        },
+        {
             "name": "get_python_version",
-            "description": "Read the Python version available to the executor runtime.",
+            "description": "Показать версию Python, доступную среде исполнения.",
             "tags": [
                 "python",
                 "python version",
@@ -65,7 +184,7 @@ def get_default_tools() -> list[dict[str, Any]]:
         },
         {
             "name": "get_current_time",
-            "description": "Return the current local date and time of the machine.",
+            "description": "Показать текущую локальную дату и время на машине.",
             "tags": [
                 "time",
                 "current time",
@@ -80,7 +199,7 @@ def get_default_tools() -> list[dict[str, Any]]:
         },
         {
             "name": "get_disk_usage",
-            "description": "Return disk usage for the current user's home volume.",
+            "description": "Показать использование диска для домашнего раздела текущего пользователя.",
             "tags": [
                 "disk",
                 "disk usage",

@@ -14,13 +14,27 @@ from protonx.schemas import JsonSchema
 DEFAULT_MIXER_SEED_PATH = Path(__file__).with_name("bootstrap_dataset_mixer_for_tools.json")
 
 
+def _enum_output_value(raw_value: Any) -> str:
+    value = str(raw_value)
+    enum_value, separator, _description = value.partition(":")
+    if separator and enum_value.strip():
+        return enum_value.strip()
+    return value
+
+
+def _enum_output_values(enum_values: Any) -> set[str]:
+    if not isinstance(enum_values, list):
+        return set()
+    return {_enum_output_value(value) for value in enum_values}
+
+
 def _default_arguments(tool: ToolDefinition) -> dict:
     arguments: dict[str, str] = {}
     for field_name in tool.arguments_schema.required:
         property_schema = tool.arguments_schema.properties.get(field_name, {})
         enum_values = property_schema.get("enum")
         if enum_values:
-            arguments[field_name] = str(enum_values[0])
+            arguments[field_name] = _enum_output_value(enum_values[0])
             continue
         arguments[field_name] = field_name.replace("_", " ")
     return arguments
@@ -134,7 +148,7 @@ def _dedupe_rows_by_user(rows: list[dict]) -> list[dict]:
     seen: set[str] = set()
     for row in rows:
         user_text = str(row.get("user") or "")
-        key = " ".join(user_text.strip().lower().split())
+        key = " ".join(user_text.strip().split())
         if not key or key in seen:
             continue
         seen.add(key)
@@ -152,6 +166,10 @@ def _append_punctuation(text: str, punctuation: str) -> str:
 def _apply_case_variant(text: str, case_variant: str) -> str:
     if case_variant == "capitalize" and text:
         return f"{text[0].upper()}{text[1:]}"
+    if case_variant == "lower":
+        return text.lower()
+    if case_variant == "upper":
+        return text.upper()
     return text
 
 
@@ -660,6 +678,7 @@ def _tool_call_example(
     available_tools: list[ToolDefinition],
     user_text: str,
     seed: dict[str, Any] | None = None,
+    arguments: dict[str, str] | None = None,
 ) -> dict:
     row_tools = _select_available_tool_definitions(
         primary,
@@ -672,7 +691,7 @@ def _tool_call_example(
         "user": user_text,
         "assistant": {
             "tool_calls": [
-                {"name": primary.name, "arguments": _default_arguments(primary)}
+                {"name": primary.name, "arguments": arguments or _default_arguments(primary)}
             ]
         },
     }
@@ -788,6 +807,82 @@ def _supports_probe_arguments(tool: ToolDefinition, arguments: dict[str, str]) -
         if property_schema.get("type") != "string":
             return False
     return True
+
+
+def _arguments_match_schema(tool: ToolDefinition, arguments: dict[str, str]) -> bool:
+    if not _supports_probe_arguments(tool, arguments):
+        return False
+
+    for field_name, value in arguments.items():
+        property_schema = tool.arguments_schema.properties.get(field_name, {})
+        enum_values = property_schema.get("enum")
+        if enum_values is not None and value not in _enum_output_values(enum_values):
+            return False
+    return True
+
+
+def _seed_argument_examples(
+    tools: list[ToolDefinition], seed: dict[str, Any] | None = None
+) -> list[dict]:
+    seed = seed or {}
+    raw_examples_by_tool = seed.get("argument_examples") or {}
+    if not isinstance(raw_examples_by_tool, dict):
+        return []
+
+    punctuation_values = seed.get("punctuation") or ["", "?"]
+    case_variants = seed.get("case_variants") or ["as_is"]
+    if not isinstance(punctuation_values, list):
+        punctuation_values = [""]
+    if not isinstance(case_variants, list):
+        case_variants = ["as_is"]
+
+    rows: list[dict] = []
+    for tool in tools:
+        raw_examples = raw_examples_by_tool.get(tool.name) or []
+        if not isinstance(raw_examples, list):
+            continue
+        for raw_example in raw_examples:
+            if not isinstance(raw_example, dict):
+                continue
+            raw_arguments = raw_example.get("arguments") or {}
+            if not isinstance(raw_arguments, dict):
+                continue
+            arguments = {
+                str(field_name): str(value)
+                for field_name, value in raw_arguments.items()
+                if str(field_name).strip()
+            }
+            if not _arguments_match_schema(tool, arguments):
+                continue
+
+            raw_requests = raw_example.get("requests") or []
+            if not isinstance(raw_requests, list):
+                continue
+            requests: list[str] = []
+            for request in raw_requests:
+                request_text = str(request)
+                if not _is_allowed_language_text(request_text, _target_languages(seed)):
+                    continue
+                requests.extend(
+                    _render_request_variants(
+                        request_text,
+                        ["{phrase}"],
+                        [str(value) for value in punctuation_values],
+                        [str(value) for value in case_variants],
+                    )
+                )
+            requests = _expand_ru_requests(_dedupe_texts(requests), seed)
+            for user_text in requests:
+                rows.append(
+                    _tool_call_example(
+                        tool,
+                        tools,
+                        user_text,
+                        seed,
+                        arguments=arguments,
+                    )
+                )
+    return rows
 
 
 def _argument_probe_examples(
@@ -915,16 +1010,31 @@ def build_examples(tools: list[ToolDefinition], target_rows: int | None = None) 
     if not isinstance(fallback_ratio, (int, float)):
         fallback_ratio = 0.2
 
-    for primary in tools:
-        for user_text in _pinned_user_requests(primary, seed):
-            tool_rows.append(_tool_call_example(primary, tools, user_text, seed))
-
+    seed_argument_rows = _seed_argument_examples(tools, seed)
+    argument_tool_names = {
+        str(row["assistant"]["tool_calls"][0]["name"])
+        for row in seed_argument_rows
+        if row.get("assistant", {}).get("tool_calls")
+    }
+    tool_rows.extend(seed_argument_rows)
     pinned_users = {row["user"] for row in tool_rows}
     for primary in tools:
+        if primary.name in argument_tool_names:
+            continue
+        for user_text in _pinned_user_requests(primary, seed):
+            if user_text in pinned_users:
+                continue
+            tool_rows.append(_tool_call_example(primary, tools, user_text, seed))
+            pinned_users.add(user_text)
+
+    for primary in tools:
+        if primary.name in argument_tool_names:
+            continue
         for user_text in _mixer_user_requests(primary, seed):
             if user_text in pinned_users:
                 continue
             tool_rows.append(_tool_call_example(primary, tools, user_text, seed))
+            pinned_users.add(user_text)
 
     if not tool_rows:
         for primary in tools:
@@ -959,4 +1069,3 @@ def build_synthetic_dataset(
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
             rows_written += 1
     return rows_written
-    languages = _target_languages(seed)

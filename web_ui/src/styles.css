@@ -498,6 +498,94 @@ a {
   white-space: nowrap;
 }
 
+.argument-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.argument-list {
+  display: grid;
+  gap: 12px;
+}
+
+.argument-row {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(10, 19, 32, 0.72);
+}
+
+.argument-row__top {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.argument-row__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.argument-row__required {
+  min-height: 47px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-strong);
+  font-weight: 700;
+}
+
+.argument-row__required input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.argument-row__remove {
+  min-height: 47px;
+  align-self: end;
+}
+
+.enum-input {
+  min-height: 104px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.argument-empty {
+  padding: 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: rgba(8, 14, 23, 0.42);
+}
+
+.advanced-schema {
+  padding-top: 4px;
+}
+
+.advanced-schema summary {
+  cursor: pointer;
+  color: var(--muted-strong);
+  font-weight: 700;
+}
+
+.advanced-schema[open] summary {
+  margin-bottom: 10px;
+}
+
+.schema-error {
+  grid-column: 1 / -1;
+}
+
 .button {
   display: inline-flex;
   align-items: center;
@@ -1261,6 +1349,7 @@ a {
   }
 
   .tag-input-row,
+  .argument-editor__header,
   .action-bar,
   .page-header,
   .page-header__meta,
@@ -1272,6 +1361,16 @@ a {
     grid-auto-flow: row;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .argument-row__top,
+  .argument-row__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .argument-row__required,
+  .argument-row__remove {
+    min-height: 0;
   }
 
   .sidebar__nav {

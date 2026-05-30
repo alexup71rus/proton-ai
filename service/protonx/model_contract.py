@@ -97,11 +97,18 @@ def compact_args_from_schema(schema: JsonSchema | dict[str, Any]) -> dict[str, A
         property_schema = properties.get(field_name, {})
         if not isinstance(property_schema, dict):
             continue
+        description = str(property_schema.get("description") or "").strip()
         enum_values = property_schema.get("enum")
         if isinstance(enum_values, list) and enum_values:
-            compact_args[field_name] = [str(value) for value in enum_values]
+            enum_spec: dict[str, Any] = {"enum": [str(value) for value in enum_values]}
+            if description:
+                enum_spec["description"] = description
+            compact_args[field_name] = enum_spec
             continue
-        compact_args[field_name] = str(property_schema.get("type") or "string")
+        type_spec: dict[str, Any] = {"type": str(property_schema.get("type") or "string")}
+        if description:
+            type_spec["description"] = description
+        compact_args[field_name] = type_spec
     return compact_args
 
 
@@ -193,6 +200,15 @@ def normalize_dataset_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _split_enum_label(value: str) -> tuple[str, str | None]:
+    enum_value, separator, enum_description = value.partition(":")
+    normalized_value = enum_value.strip()
+    normalized_description = enum_description.strip()
+    if separator and normalized_value and normalized_description:
+        return normalized_value, normalized_description
+    return value.strip(), None
+
+
 def _format_tool_line(tool: dict[str, Any]) -> str:
     tags = [str(tag) for tag in tool.get("tags", []) if str(tag).strip()]
     if not tags:
@@ -204,11 +220,35 @@ def _format_tool_line(tool: dict[str, Any]) -> str:
         arg_parts: list[str] = []
         for field_name in sorted(args):
             spec = args[field_name]
-            if isinstance(spec, list):
-                rendered_spec = " | ".join(str(value) for value in spec)
+            description = ""
+            if isinstance(spec, dict):
+                raw_description = spec.get("description")
+                if isinstance(raw_description, str) and raw_description.strip():
+                    description = f" ({raw_description.strip()})"
+                enum_values = spec.get("enum")
+                if isinstance(enum_values, list):
+                    rendered_values: list[str] = []
+                    for value in enum_values:
+                        enum_value, enum_description = _split_enum_label(str(value))
+                        rendered_value = enum_value
+                        if enum_description:
+                            rendered_value = f"{enum_value}: {enum_description}"
+                        rendered_values.append(rendered_value)
+                    rendered_spec = " | ".join(rendered_values)
+                else:
+                    rendered_spec = str(spec.get("type") or "string")
+            elif isinstance(spec, list):
+                rendered_values: list[str] = []
+                for value in spec:
+                    enum_value, enum_description = _split_enum_label(str(value))
+                    rendered_value = enum_value
+                    if enum_description:
+                        rendered_value = f"{enum_value}: {enum_description}"
+                    rendered_values.append(rendered_value)
+                rendered_spec = " | ".join(rendered_values)
             else:
                 rendered_spec = str(spec)
-            arg_parts.append(f"{field_name}={rendered_spec}")
+            arg_parts.append(f"{field_name}={rendered_spec}{description}")
         line += f" ; args: {', '.join(arg_parts)}"
     return line
 

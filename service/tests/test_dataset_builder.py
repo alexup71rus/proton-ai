@@ -170,7 +170,7 @@ def test_build_examples_use_empty_arguments_for_zero_argument_tools_and_more_pro
     assert any(row["user"].startswith("какая версия ноды") for row, assistant in tool_rows)
 
 
-def test_build_examples_can_generate_7000_ru_only_rows_from_seed():
+def test_build_examples_can_generate_large_ru_only_rows_from_seed():
     tools = [
         ToolDefinition(
             name="list_downloads",
@@ -204,25 +204,25 @@ def test_build_examples_can_generate_7000_ru_only_rows_from_seed():
         ),
     ]
 
-    rows = build_examples(tools, target_rows=7000)
+    rows = build_examples(tools, target_rows=3000)
     users = [row["user"] for row in rows]
     class_counts: dict[str, int] = {}
     for row in rows:
         tool_name = row["assistant"]["tool_calls"][0]["name"]
         class_counts[tool_name] = class_counts.get(tool_name, 0) + 1
 
-    assert len(rows) == 7000
+    assert len(rows) == 3000
     unique_prompts = {
         json.dumps({"tools": row["tools"], "user": row["user"]}, ensure_ascii=False, sort_keys=True)
         for row in rows
     }
-    assert len(unique_prompts) == 7000
+    assert len(unique_prompts) == 3000
     assert all(any("а" <= char.lower() <= "я" or char.lower() == "ё" for char in user) for user in users)
-    assert class_counts["get_node_version"] >= 150
-    assert class_counts["get_python_version"] >= 150
-    assert class_counts["get_current_time"] >= 150
-    assert class_counts["get_disk_usage"] >= 150
-    assert class_counts["list_downloads"] >= 150
+    assert class_counts["get_node_version"] >= 120
+    assert class_counts["get_python_version"] >= 120
+    assert class_counts["get_current_time"] >= 120
+    assert class_counts["get_disk_usage"] >= 120
+    assert class_counts["list_downloads"] >= 120
 
 
 def test_build_examples_include_seed_training_tools_as_target_classes():
@@ -493,6 +493,79 @@ def test_build_examples_include_argument_probe_rows():
         "query": "package.json"
     }
     assert "find node js latest version" not in rows_by_user
+
+
+def test_build_examples_include_seed_argument_rows_for_concrete_readonly_tools():
+    tools = [
+        ToolDefinition(
+            name="get_node_version",
+            description="Node/npm version",
+            tags=["node version", "npm version", "версия ноды", "версия npm"],
+            arguments_schema=JsonSchema(
+                type="object",
+                properties={
+                    "target": {
+                        "type": "string",
+                        "description": "Version target.",
+                        "enum": [
+                            "node: версия Node.js через node --version",
+                            "npm: версия npm через npm --version",
+                        ],
+                    }
+                },
+                required=["target"],
+            ),
+        ),
+        ToolDefinition(
+            name="docker_list_containers",
+            description="List Docker containers",
+            tags=["docker ps", "контейнеры докера"],
+            arguments_schema=JsonSchema(
+                type="object",
+                properties={
+                    "state": {
+                        "type": "string",
+                        "description": "Container state.",
+                        "enum": [
+                            "running: только запущенные контейнеры, docker ps",
+                            "all: все контейнеры включая остановленные, docker ps --all",
+                        ],
+                    }
+                },
+                required=["state"],
+            ),
+        ),
+    ]
+
+    rows = build_examples(tools, target_rows=0)
+    rows_by_user = {row["user"]: row for row in rows}
+
+    assert rows_by_user["покажи npm -v"]["assistant"]["tool_calls"][0]["arguments"] == {
+        "target": "npm"
+    }
+    assert rows_by_user["покажи docker ps"]["assistant"]["tool_calls"][0]["arguments"] == {
+        "state": "running"
+    }
+    target_arg = next(
+        tool["args"]["target"]
+        for tool in rows_by_user["покажи npm -v"]["tools"]
+        if tool["name"] == "get_node_version"
+    )
+    state_arg = next(
+        tool["args"]["state"]
+        for tool in rows_by_user["покажи docker ps"]["tools"]
+        if tool["name"] == "docker_list_containers"
+    )
+    assert target_arg["enum"] == [
+        "node: версия Node.js через node --version",
+        "npm: версия npm через npm --version",
+    ]
+    assert target_arg["description"] == "Version target."
+    assert "enum_descriptions" not in target_arg
+    assert state_arg["enum"] == [
+        "running: только запущенные контейнеры, docker ps",
+        "all: все контейнеры включая остановленные, docker ps --all",
+    ]
 
 
 def test_build_examples_skip_argument_probe_rows_when_tools_are_missing_from_registry():

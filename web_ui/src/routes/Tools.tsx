@@ -215,7 +215,7 @@ export function ToolsRoute() {
       </div>
 
       {schemaError ? (
-        <p className="page-note">Fix the schema JSON before validating or saving the registry.</p>
+        <p className="page-note">Fix the argument schema before validating or saving the registry.</p>
       ) : null}
     </section>
   );

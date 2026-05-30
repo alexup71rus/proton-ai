@@ -1,8 +1,27 @@
+export type JsonSchemaStringType = "string";
+
+
+export interface JsonSchemaStringArgument {
+  type: JsonSchemaStringType;
+  description?: string;
+  enum?: string[];
+  [key: string]: unknown;
+}
+
+
+export interface ToolArgumentsSchema {
+  type: "object";
+  properties: Record<string, JsonSchemaStringArgument>;
+  required?: string[];
+  [key: string]: unknown;
+}
+
+
 export interface ToolDefinition {
   name: string;
   description: string;
   tags: string[];
-  arguments_schema: Record<string, unknown>;
+  arguments_schema: ToolArgumentsSchema;
   executor_path: string;
 }
 

@@ -79,3 +79,108 @@ def test_build_unique_holdout_rows_include_unavailable_tool_family_fallbacks() -
 
     assert git_unavailable
     assert docker_unavailable
+
+
+def test_build_unique_holdout_rows_include_argument_specific_cases() -> None:
+    records = [
+        {
+            "tools": [
+                {
+                    "name": "list_directory",
+                    "tags": ["папка проекта"],
+                    "args": {
+                        "directory": {
+                            "description": "Какую директорию показать.",
+                            "enum": [
+                                "downloads: папка загрузок",
+                                "project_root: корень проекта",
+                                "service: сервис модели",
+                                "web_backend: backend интерфейса",
+                                "web_ui: frontend интерфейса",
+                                "data: данные проекта",
+                            ],
+                        }
+                    },
+                },
+                {"name": "__fallback__", "tags": ["fallback"]},
+            ],
+            "user": "покажи папку data",
+            "assistant": {"tool_calls": [{"name": "list_directory", "arguments": {"directory": "data"}}]},
+        },
+        {
+            "tools": [
+                {
+                    "name": "get_node_version",
+                    "tags": ["node", "npm"],
+                    "args": {
+                        "target": {
+                            "description": "Версию чего показать.",
+                            "enum": [
+                                "node: версия Node.js",
+                                "npm: версия npm",
+                            ],
+                        }
+                    },
+                },
+                {"name": "__fallback__", "tags": ["fallback"]},
+            ],
+            "user": "покажи node -v",
+            "assistant": {"tool_calls": [{"name": "get_node_version", "arguments": {"target": "node"}}]},
+        },
+        {
+            "tools": [
+                {
+                    "name": "docker_list_containers",
+                    "tags": ["docker ps"],
+                    "args": {
+                        "state": {
+                            "enum": [
+                                "running: только запущенные",
+                                "all: все контейнеры",
+                            ]
+                        }
+                    },
+                },
+                {"name": "__fallback__", "tags": ["fallback"]},
+            ],
+            "user": "покажи docker ps",
+            "assistant": {"tool_calls": [{"name": "docker_list_containers", "arguments": {"state": "running"}}]},
+        },
+        {
+            "tools": [
+                {
+                    "name": "check_http_head",
+                    "tags": ["head"],
+                    "args": {
+                        "target": {
+                            "enum": [
+                                "example_com: example.com",
+                                "pypi: pypi.org",
+                                "npm_registry: registry.npmjs.org",
+                                "github: github.com",
+                            ]
+                        }
+                    },
+                },
+                {"name": "__fallback__", "tags": ["fallback"]},
+            ],
+            "user": "проверь github",
+            "assistant": {"tool_calls": [{"name": "check_http_head", "arguments": {"target": "github"}}]},
+        },
+    ]
+
+    rows = build_unique_holdout_rows(records)
+    rows_by_user = {row["user"]: row for row in rows}
+
+    assert rows_by_user["выведи листинг каталога web ui"]["assistant"]["tool_calls"] == [
+        {"name": "list_directory", "arguments": {"directory": "web_ui"}}
+    ]
+    assert rows_by_user["проверь именно npm --version"]["assistant"]["tool_calls"] == [
+        {"name": "get_node_version", "arguments": {"target": "npm"}}
+    ]
+    assert rows_by_user["выведи docker ps --all полностью"]["assistant"]["tool_calls"] == [
+        {"name": "docker_list_containers", "arguments": {"state": "all"}}
+    ]
+    assert rows_by_user["github.com отвечает на head или нет"]["assistant"]["tool_calls"] == [
+        {"name": "check_http_head", "arguments": {"target": "github"}}
+    ]

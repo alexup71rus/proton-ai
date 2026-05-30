@@ -34,9 +34,20 @@ def _schema_ok(arguments: dict[str, Any], tool: ToolDefinition, strict_mode: boo
         if expected_type == "string" and not isinstance(value, str):
             return False
         enum_values = property_schema.get("enum")
-        if enum_values is not None and value not in enum_values:
+        if enum_values is not None and value not in _enum_output_values(enum_values):
             return False
     return True
+
+
+def _enum_output_values(enum_values: Any) -> set[str]:
+    if not isinstance(enum_values, list):
+        return set()
+    output_values: set[str] = set()
+    for raw_value in enum_values:
+        value = str(raw_value)
+        enum_value, separator, _description = value.partition(":")
+        output_values.add(enum_value.strip() if separator and enum_value.strip() else value)
+    return output_values
 
 
 def validate_model_output(

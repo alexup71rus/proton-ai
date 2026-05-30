@@ -13,23 +13,174 @@ SPECIAL_HOLDOUT_REQUESTS: dict[str, list[str]] = {
     "list_downloads": [
         "что сейчас лежит в директории загрузок",
     ],
+    "list_directory": [
+        "покажи содержимое разрешённой локальной папки",
+        "выведи листинг нужной директории проекта",
+    ],
     "get_node_version": [
         "сообщи установленный релиз Node.js на этой машине",
+        "проверь локальный JavaScript runtime",
     ],
     "get_python_version": [
         "сообщи версию активного интерпретатора Python",
+        "покажи релиз текущего Python runtime",
     ],
     "get_current_time": [
         "сообщи локальные дату и время на этой машине",
+        "проверь системные часы без внешних сервисов",
     ],
     "get_disk_usage": [
         "сообщи свободное место на домашнем разделе",
+        "покажи сколько занято на локальном диске",
+    ],
+    "docker_list_containers": [
+        "покажи состояние контейнеров Docker readonly",
+        "выведи список контейнеров без изменения Docker",
+    ],
+    "check_http_head": [
+        "проверь доступность разрешённого endpoint через HEAD",
+        "сделай безопасную сетевую HEAD проверку",
     ],
     FALLBACK_TOOL_NAME: [
         "закажи такси до аэропорта",
         "напиши короткое стихотворение о дожде",
         "запусти тесты в проекте",
         "почини ошибку в приложении",
+        "выбери сам любой инструмент",
+        "проверь что-нибудь непонятное",
+        "сделай git push",
+        "перезапусти docker compose",
+        "открой неизвестный сайт",
+        "прочитай секретный файл",
+        "сделай установку зависимостей",
+        "ответь без инструментов",
+    ],
+}
+
+ARGUMENT_HOLDOUT_EXAMPLES: dict[str, list[dict[str, Any]]] = {
+    "get_node_version": [
+        {
+            "arguments": {"target": "node"},
+            "requests": [
+                "какой релиз node runtime сейчас доступен",
+                "сообщи nodejs version без запуска npm",
+                "проверь именно node --version",
+                "выведи версию локальной ноды",
+            ],
+        },
+        {
+            "arguments": {"target": "npm"},
+            "requests": [
+                "какой релиз npm cli сейчас доступен",
+                "сообщи npm version без проверки node",
+                "проверь именно npm --version",
+                "выведи версию локального npm",
+            ],
+        },
+    ],
+    "docker_list_containers": [
+        {
+            "arguments": {"state": "running"},
+            "requests": [
+                "покажи только контейнеры которые сейчас up",
+                "выведи docker ps без остановленных контейнеров",
+                "какие docker контейнеры работают в данный момент",
+                "посмотри активные контейнеры докера",
+            ],
+        },
+        {
+            "arguments": {"state": "all"},
+            "requests": [
+                "покажи контейнеры включая exited",
+                "выведи docker ps --all полностью",
+                "какие docker контейнеры существуют вообще",
+                "посмотри все контейнеры докера вместе с остановленными",
+            ],
+        },
+    ],
+    "check_http_head": [
+        {
+            "arguments": {"target": "example_com"},
+            "requests": [
+                "сделай базовую HEAD проверку example.com",
+                "example.com отвечает на head или нет",
+                "проверь интернет через example dot com",
+            ],
+        },
+        {
+            "arguments": {"target": "pypi"},
+            "requests": [
+                "проверь HEAD доступ до Python package index",
+                "pypi.org отвечает на head или нет",
+                "сделай сетевую проверку pypi без скачивания",
+            ],
+        },
+        {
+            "arguments": {"target": "npm_registry"},
+            "requests": [
+                "проверь HEAD доступ до npm реестра",
+                "registry.npmjs.org отвечает на head или нет",
+                "сделай сетевую проверку npm registry без скачивания",
+            ],
+        },
+        {
+            "arguments": {"target": "github"},
+            "requests": [
+                "проверь HEAD доступ до github com",
+                "github.com отвечает на head или нет",
+                "сделай сетевую проверку github без скачивания",
+            ],
+        },
+    ],
+    "list_directory": [
+        {
+            "arguments": {"directory": "downloads"},
+            "requests": [
+                "что сейчас находится в пользовательских Downloads",
+                "выведи листинг папки скачанных файлов",
+                "посмотри локальную директорию загрузок",
+            ],
+        },
+        {
+            "arguments": {"directory": "project_root"},
+            "requests": [
+                "покажи файлы верхнего уровня proton x",
+                "что лежит рядом с README проекта",
+                "выведи корневую папку этого репозитория",
+            ],
+        },
+        {
+            "arguments": {"directory": "service"},
+            "requests": [
+                "что лежит внутри fastapi model service",
+                "выведи листинг каталога service",
+                "покажи папку серверной модели",
+            ],
+        },
+        {
+            "arguments": {"directory": "web_backend"},
+            "requests": [
+                "что лежит внутри backend для интерфейса",
+                "выведи листинг каталога web backend",
+                "покажи папку bff сервиса",
+            ],
+        },
+        {
+            "arguments": {"directory": "web_ui"},
+            "requests": [
+                "что лежит внутри react vite интерфейса",
+                "выведи листинг каталога web ui",
+                "покажи папку фронтенда",
+            ],
+        },
+        {
+            "arguments": {"directory": "data"},
+            "requests": [
+                "что лежит в локальном каталоге данных обучения",
+                "выведи листинг папки весов датасетов и логов",
+                "покажи папку data этого проекта",
+            ],
+        },
     ],
 }
 
@@ -76,11 +227,31 @@ def _tool_args(tool: dict[str, Any]) -> dict[str, Any]:
     return args if isinstance(args, dict) else {}
 
 
+def _enum_output_value(raw_value: Any) -> str:
+    value = str(raw_value)
+    enum_value, separator, _description = value.partition(":")
+    if separator and enum_value.strip():
+        return enum_value.strip()
+    return value
+
+
+def _enum_output_values(enum_values: Any) -> set[str]:
+    if not isinstance(enum_values, list):
+        return set()
+    return {_enum_output_value(value) for value in enum_values}
+
+
 def _default_arguments(tool: dict[str, Any]) -> dict[str, str]:
     arguments: dict[str, str] = {}
     for field_name, spec in _tool_args(tool).items():
+        if isinstance(spec, dict):
+            enum_values = spec.get("enum")
+            if isinstance(enum_values, list) and enum_values:
+                arguments[field_name] = _enum_output_value(enum_values[0])
+                continue
+            spec = spec.get("type") or "string"
         if isinstance(spec, list) and spec:
-            arguments[field_name] = str(spec[0])
+            arguments[field_name] = _enum_output_value(spec[0])
             continue
         arguments[field_name] = field_name.replace("_", " ")
     return arguments
@@ -95,8 +266,15 @@ def _schema_ok(arguments: dict[str, Any], tool: dict[str, Any]) -> bool:
 
     for key, value in arguments.items():
         spec = specs.get(key)
+        if isinstance(spec, dict):
+            enum_values = spec.get("enum")
+            if isinstance(enum_values, list):
+                if value not in _enum_output_values(enum_values):
+                    return False
+                continue
+            spec = spec.get("type") or "string"
         if isinstance(spec, list):
-            if value not in spec:
+            if value not in _enum_output_values(spec):
                 return False
             continue
         if spec == "string" and not isinstance(value, str):
@@ -120,6 +298,35 @@ def _holdout_requests_for_tool(tool: dict[str, Any]) -> list[str]:
     if requests:
         return list(requests)
     return _generic_holdout_requests(tool)
+
+
+def _append_holdout_row(
+    rows: list[dict[str, Any]],
+    seen_users: set[str],
+    used_users: set[str],
+    row_tools: list[dict[str, Any]],
+    tool_name: str,
+    arguments: dict[str, Any],
+    request: str,
+) -> None:
+    normalized_request = _normalize_user_text(request)
+    if normalized_request in seen_users or normalized_request in used_users:
+        return
+    used_users.add(normalized_request)
+    rows.append(
+        {
+            "tools": row_tools,
+            "user": request,
+            "assistant": {
+                "tool_calls": [
+                    {
+                        "name": tool_name,
+                        "arguments": dict(arguments),
+                    }
+                ]
+            },
+        }
+    )
 
 
 def _dataset_tools(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -187,24 +394,32 @@ def build_unique_holdout_rows(records: list[dict[str, Any]]) -> list[dict[str, A
         row_tools = tools_by_target.get(tool_name, tools)
         expected_arguments = _default_arguments(tool)
         for request in _holdout_requests_for_tool(tool):
-            normalized_request = _normalize_user_text(request)
-            if normalized_request in seen_users or normalized_request in used_users:
-                continue
-            used_users.add(normalized_request)
-            rows.append(
-                {
-                    "tools": row_tools,
-                    "user": request,
-                    "assistant": {
-                        "tool_calls": [
-                            {
-                                "name": tool_name,
-                                "arguments": expected_arguments,
-                            }
-                        ]
-                    },
-                }
+            _append_holdout_row(
+                rows,
+                seen_users,
+                used_users,
+                row_tools,
+                tool_name,
+                expected_arguments,
+                request,
             )
+        for example in ARGUMENT_HOLDOUT_EXAMPLES.get(tool_name, []):
+            arguments = example.get("arguments", {})
+            if not isinstance(arguments, dict) or not _schema_ok(arguments, tool):
+                continue
+            raw_requests = example.get("requests", [])
+            if not isinstance(raw_requests, list):
+                continue
+            for request in raw_requests:
+                _append_holdout_row(
+                    rows,
+                    seen_users,
+                    used_users,
+                    row_tools,
+                    tool_name,
+                    arguments,
+                    str(request),
+                )
 
     available_tool_names = {str(tool.get("name") or "") for tool in tools}
     for scenario in UNAVAILABLE_HOLDOUT_SCENARIOS:
@@ -223,23 +438,14 @@ def build_unique_holdout_rows(records: list[dict[str, Any]]) -> list[dict[str, A
         if not any(str(tool.get("name") or "") == FALLBACK_TOOL_NAME for tool in row_tools):
             continue
         for request in scenario.get("requests", []):
-            normalized_request = _normalize_user_text(str(request))
-            if normalized_request in seen_users or normalized_request in used_users:
-                continue
-            used_users.add(normalized_request)
-            rows.append(
-                {
-                    "tools": row_tools,
-                    "user": str(request),
-                    "assistant": {
-                        "tool_calls": [
-                            {
-                                "name": FALLBACK_TOOL_NAME,
-                                "arguments": {},
-                            }
-                        ]
-                    },
-                }
+            _append_holdout_row(
+                rows,
+                seen_users,
+                used_users,
+                row_tools,
+                FALLBACK_TOOL_NAME,
+                {},
+                str(request),
             )
 
     return rows

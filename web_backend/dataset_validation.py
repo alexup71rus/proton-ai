@@ -81,13 +81,31 @@ def _schema_ok(arguments: dict[str, Any], tool: dict[str, Any]) -> bool:
 
     for key, value in arguments.items():
         spec = argument_specs.get(key)
+        if isinstance(spec, dict):
+            enum_values = spec.get("enum")
+            if isinstance(enum_values, list):
+                if value not in _enum_output_values(enum_values):
+                    return False
+                continue
+            spec = spec.get("type") or "string"
         if isinstance(spec, list):
-            if value not in spec:
+            if value not in _enum_output_values(spec):
                 return False
             continue
         if spec == "string" and not isinstance(value, str):
             return False
     return True
+
+
+def _enum_output_values(enum_values: Any) -> set[str]:
+    if not isinstance(enum_values, list):
+        return set()
+    output_values: set[str] = set()
+    for raw_value in enum_values:
+        value = str(raw_value)
+        enum_value, separator, _description = value.partition(":")
+        output_values.add(enum_value.strip() if separator and enum_value.strip() else value)
+    return output_values
 
 
 def _validate_compact_args(tool: dict[str, Any], line_number: int, add_issue) -> None:
@@ -101,9 +119,25 @@ def _validate_compact_args(tool: dict[str, Any], line_number: int, add_issue) ->
             continue
         if isinstance(spec, list) and all(isinstance(value, str) for value in spec):
             continue
+        if isinstance(spec, dict):
+            spec_type = spec.get("type")
+            enum_values = spec.get("enum")
+            description = spec.get("description")
+            has_valid_type = spec_type is None or isinstance(spec_type, str)
+            has_valid_enum = enum_values is None or (
+                isinstance(enum_values, list)
+                and all(isinstance(value, str) for value in enum_values)
+            )
+            has_valid_description = description is None or isinstance(description, str)
+            if (
+                has_valid_type
+                and has_valid_enum
+                and has_valid_description
+            ):
+                continue
         add_issue(
             line_number,
-            f"Tool {tool.get('name', '')}.{field_name} arg spec must be a string or string list.",
+            f"Tool {tool.get('name', '')}.{field_name} arg spec must be a string, string list, or compact object.",
         )
 
 

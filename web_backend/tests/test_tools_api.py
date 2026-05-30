@@ -95,13 +95,16 @@ def test_get_tools_seeds_default_registry_when_file_is_missing(tmp_path: Path, m
     assert response.status_code == 200
     payload = response.json()
     assert [tool["name"] for tool in payload["tools"]] == [
-        "list_downloads",
+        "list_directory",
         "get_node_version",
+        "docker_list_containers",
+        "check_http_head",
         "get_python_version",
         "get_current_time",
         "get_disk_usage",
     ]
-    assert payload["tools"][0]["executor_path"] == "web_backend/executors/list_downloads.py"
+    assert payload["tools"][0]["executor_path"] == "web_backend/executors/list_directory.py"
+    assert payload["tools"][0]["arguments_schema"]["required"] == ["directory"]
     assert registry_path.exists()
 
 
@@ -140,3 +143,20 @@ def test_put_tools_rejects_missing_executor_script(tmp_path: Path, monkeypatch, 
 
     assert response.status_code == 400
     assert "executor_path not found" in response.json()["detail"]
+
+
+def test_put_tools_still_rejects_missing_executor_for_metadata_only_tools(
+    tmp_path: Path, monkeypatch, client
+) -> None:
+    registry_path = tmp_path / "tools.json"
+    monkeypatch.setenv("PROTONX_TOOLS_FILE", str(registry_path))
+    metadata_tool = {
+        **_sample_tool(),
+        "name": "metadata_only",
+        "executor_path": "",
+    }
+
+    response = client.put("/api/tools", json={"tools": [metadata_tool]})
+
+    assert response.status_code == 400
+    assert "must define executor_path" in response.json()["detail"]
