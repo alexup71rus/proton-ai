@@ -3,6 +3,7 @@ import { Badge, Button, Card, Collapse, Group, Stack, Text } from "@mantine/core
 import { IconChevronDown, IconChevronRight, IconCode } from "@tabler/icons-react";
 
 import type { LogRow } from "../api";
+import { HighlightedJson } from "./HighlightedJson";
 
 
 type LogCardProps = {
@@ -84,7 +85,7 @@ export function LogCard({ row }: LogCardProps) {
               Raw model output
             </Button>
             <Collapse in={rawOpen}>
-              <pre className="json-block pre-wrap">{row.raw_output}</pre>
+              <HighlightedJson value={row.raw_output} />
             </Collapse>
           </Stack>
         ) : null}

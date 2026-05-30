@@ -1,6 +1,7 @@
 import { Accordion, Badge, Card, Code, Group, Stack, Text, Title } from "@mantine/core";
 
 import type { TestResponse } from "../api";
+import { HighlightedJson } from "./HighlightedJson";
 
 
 type DebugPanelProps = {
@@ -30,13 +31,13 @@ export function DebugPanel({ debug }: DebugPanelProps) {
           <Accordion.Item value="validator">
             <Accordion.Control>Validator</Accordion.Control>
             <Accordion.Panel>
-              <pre className="json-block">{JSON.stringify(debug.validator_result, null, 2)}</pre>
+              <HighlightedJson value={JSON.stringify(debug.validator_result, null, 2)} />
             </Accordion.Panel>
           </Accordion.Item>
           <Accordion.Item value="raw">
             <Accordion.Control>Raw output</Accordion.Control>
             <Accordion.Panel>
-              <pre className="json-block pre-wrap">{debug.raw_model_output || "-"}</pre>
+              <HighlightedJson value={debug.raw_model_output || "-"} />
             </Accordion.Panel>
           </Accordion.Item>
           <Accordion.Item value="validation">

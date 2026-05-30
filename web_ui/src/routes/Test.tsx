@@ -15,6 +15,7 @@ import { IconAlertCircle, IconPlayerPlay, IconX } from "@tabler/icons-react";
 
 import { runTest, type TestResponse, type WorkspaceModel, type WorkspaceTestSettings } from "../api";
 import { DebugPanel } from "../components/DebugPanel";
+import { HighlightedJson } from "../components/HighlightedJson";
 import { usePersistedTestDraft } from "../usePersistedTestDraft";
 
 
@@ -227,7 +228,7 @@ export function TestRoute({ selectedModel, testSettings, onTestSettingsChange }:
                         {resultHasArguments ? (
                           <>
                             <Text size="sm" c="dimmed">Arguments</Text>
-                            <pre className="json-block json-block--compact">{JSON.stringify(result.result.arguments, null, 2)}</pre>
+                            <HighlightedJson value={JSON.stringify(result.result.arguments, null, 2)} compact />
                           </>
                         ) : null}
                       </Stack>
