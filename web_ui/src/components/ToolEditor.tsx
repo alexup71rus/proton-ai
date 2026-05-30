@@ -633,7 +633,7 @@ export function ToolEditor({
           <div>
             <Group gap="xs">
               <Title order={3}>{tool.name.trim() || "Untitled draft"}</Title>
-              {dirty ? <Badge color="yellow">unsaved</Badge> : <Badge variant="light">saved</Badge>}
+              {dirty ? <Badge color="yellow">unsaved</Badge> : null}
             </Group>
             <Text size="sm" c="dimmed">
               {sourceLabel}{sourcePathLabel ? ` · ${sourcePathLabel}` : ""}

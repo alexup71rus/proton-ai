@@ -85,7 +85,7 @@ export function LogCard({ row }: LogCardProps) {
               Raw model output
             </Button>
             <Collapse in={rawOpen}>
-              <HighlightedJson value={row.raw_output} />
+              {rawOpen ? <HighlightedJson value={row.raw_output} /> : null}
             </Collapse>
           </Stack>
         ) : null}
