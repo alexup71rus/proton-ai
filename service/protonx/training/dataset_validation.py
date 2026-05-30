@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from protonx.enum_values import enum_is_supported
+from protonx.enum_values import enum_output_values
+
 
 def _tool_argument_specs(tool: dict[str, Any]) -> dict[str, Any]:
     compact_args = tool.get("args")
@@ -27,8 +30,11 @@ def _tool_argument_specs(tool: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(property_schema, dict):
             continue
         enum_values = property_schema.get("enum")
-        if isinstance(enum_values, list) and enum_values:
-            argument_specs[field_name] = [str(value) for value in enum_values]
+        if enum_output_values(enum_values):
+            argument_specs[field_name] = {
+                "type": property_schema.get("type") or "string",
+                "enum": enum_values,
+            }
             continue
         argument_specs[field_name] = str(property_schema.get("type") or "string")
     return argument_specs
@@ -48,27 +54,18 @@ def _schema_ok(arguments: dict[str, Any], tool: dict[str, Any]) -> bool:
         spec = argument_specs.get(key)
         if isinstance(spec, dict):
             enum_values = spec.get("enum")
-            if isinstance(enum_values, list):
-                if value not in _enum_output_values(enum_values):
+            if enum_values is not None:
+                if value not in enum_output_values(enum_values):
                     return False
                 continue
             spec = spec.get("type") or "string"
         if isinstance(spec, list):
-            if value not in _enum_output_values(spec):
+            if value not in enum_output_values(spec):
                 return False
             continue
         if spec == "string" and not isinstance(value, str):
             return False
     return True
-
-
-def _enum_output_values(enum_values: list[Any]) -> set[str]:
-    output_values: set[str] = set()
-    for raw_value in enum_values:
-        value = str(raw_value)
-        enum_value, separator, _description = value.partition(":")
-        output_values.add(enum_value.strip() if separator and enum_value.strip() else value)
-    return output_values
 
 
 def _validate_compact_args(tool: dict[str, Any], line_number: int, add_issue) -> None:
@@ -87,10 +84,7 @@ def _validate_compact_args(tool: dict[str, Any], line_number: int, add_issue) ->
             enum_values = spec.get("enum")
             description = spec.get("description")
             has_valid_type = spec_type is None or isinstance(spec_type, str)
-            has_valid_enum = enum_values is None or (
-                isinstance(enum_values, list)
-                and all(isinstance(value, str) for value in enum_values)
-            )
+            has_valid_enum = enum_is_supported(enum_values)
             has_valid_description = description is None or isinstance(description, str)
             if (
                 has_valid_type
@@ -126,8 +120,8 @@ def _validate_legacy_schema(tool: dict[str, Any], line_number: int, add_issue) -
             add_issue(line_number, f"Tool {name}.{field_name} schema type must be string.")
             continue
         enum_values = property_schema.get("enum")
-        if enum_values is not None and not isinstance(enum_values, list):
-            add_issue(line_number, f"Tool {name}.{field_name} enum must be a list.")
+        if enum_values is not None and not enum_is_supported(enum_values):
+            add_issue(line_number, f"Tool {name}.{field_name} enum must be a string list or value-description object.")
 
 
 def _parse_compact_row(

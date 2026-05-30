@@ -1,3 +1,5 @@
+import { Alert, Badge, Card, Group, Progress, SimpleGrid, Stack, Text, Title } from "@mantine/core";
+
 import type { TrainingStatus } from "../api";
 import { formatTrainingStatusLabel } from "../trainingStatus";
 
@@ -29,8 +31,9 @@ function buildSparkline(values: number[]): string | null {
     return null;
   }
 
-  const width = 280;
-  const height = 90;
+  const width = 1000;
+  const height = 180;
+  const padding = 8;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
@@ -40,161 +43,116 @@ function buildSparkline(values: number[]): string | null {
     .map((value, index) => {
       const x = index * step;
       const normalized = (value - min) / span;
-      const y = height - normalized * height;
+      const y = height - padding - normalized * (height - padding * 2);
       return `${x},${y}`;
     })
     .join(" ");
 }
 
 
+function metricCard(label: string, value: string) {
+  return (
+    <Card bg="dark.7">
+      <Text size="xs" tt="uppercase" c="dimmed" fw={700}>{label}</Text>
+      <div className="metric-value">{value}</div>
+    </Card>
+  );
+}
+
+
 export function TrainingProgress({ status }: TrainingProgressProps) {
   const lossHistory = status?.loss_history ?? [];
+  const lossHistoryTotal = status?.loss_history_total ?? lossHistory.length;
   const metrics = status?.metrics ?? {};
   const sparkline = status ? buildSparkline(lossHistory) : null;
   const invalidCount = Math.max((status?.eval_total ?? 0) - (status?.eval_valid ?? 0), 0);
   const hasRunState = Boolean(status && status.status !== "idle");
   const runStatus = hasRunState && status ? status : null;
+  const progressValue = runStatus && runStatus.total_steps > 0
+    ? Math.min(100, (runStatus.current_step / runStatus.total_steps) * 100)
+    : 0;
 
   return (
-    <section className="panel training-progress">
-      <div className="section-heading">
-        <div>
-          <span className="eyebrow">Progress</span>
-          <h2>Training run</h2>
-        </div>
-        {hasRunState ? (
-          <span className={`status-chip status-chip--${status?.status ?? "idle"}`}>
-            {formatTrainingStatusLabel(status?.status)}
-          </span>
-        ) : null}
-      </div>
-
-      {!runStatus ? (
-        <div className="empty-state empty-state--compact">
-          <h3>No training state yet</h3>
-          <p>Pick a dataset and start a run to see live progress here.</p>
-        </div>
-      ) : (
-        <>
-          <div className="metric-grid">
-            <div className="metric-card">
-              <span>Epoch</span>
-              <strong>
-                {runStatus.current_epoch ?? 0} / {runStatus.total_epochs ?? 0}
-              </strong>
-            </div>
-            <div className="metric-card">
-              <span>Step</span>
-              <strong>
-                {runStatus.current_step ?? 0} / {runStatus.total_steps ?? 0}
-              </strong>
-            </div>
-            <div className="metric-card">
-              <span>Loss</span>
-              <strong>{formatMetric(runStatus.loss)}</strong>
-            </div>
-            <div className="metric-card">
-              <span>Checkpoint</span>
-              <strong>{runStatus.checkpoint_path ? "Ready" : "Pending"}</strong>
-            </div>
-          </div>
-
-          <div className="loss-card panel panel--soft">
-            <div className="loss-card__header">
-              <strong>Loss curve</strong>
-              <span>{lossHistory.length} samples</span>
-            </div>
-
-            {sparkline ? (
-              <svg viewBox="0 0 280 90" className="loss-card__chart" role="img" aria-label="Loss history">
-                <polyline
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  points={sparkline}
-                />
-              </svg>
-            ) : (
-              <div className="empty-state empty-state--compact">
-                <p>Loss history will appear once the run produces enough steps.</p>
-              </div>
-            )}
-          </div>
-
-          <div className="metrics-stack">
-            <div className="panel panel--soft metrics-card">
-              <strong>Run config</strong>
-              <dl>
-                <div>
-                  <dt>Model</dt>
-                  <dd>{runStatus.model_name || "-"}</dd>
-                </div>
-                <div>
-                  <dt>Tokenizer</dt>
-                  <dd>{runStatus.tokenizer_name || "-"}</dd>
-                </div>
-                <div>
-                  <dt>Batch size</dt>
-                  <dd>{runStatus.batch_size ?? 1}</dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="panel panel--soft metrics-card">
-              <strong>Evaluation</strong>
-              {runStatus.eval_total === 0 ? (
-                <p>No post-train evaluation yet.</p>
-              ) : (
-                <dl>
-                  <div>
-                    <dt>Exact match</dt>
-                    <dd>{formatRatio(runStatus.eval_exact, runStatus.eval_total)}</dd>
-                  </div>
-                  <div>
-                    <dt>Valid output</dt>
-                    <dd>{formatRatio(runStatus.eval_valid, runStatus.eval_total)}</dd>
-                  </div>
-                  <div>
-                    <dt>Positive rows</dt>
-                    <dd>{formatRatio(runStatus.eval_positive_exact, runStatus.eval_positive_total)}</dd>
-                  </div>
-                  <div>
-                    <dt>Fallback rows</dt>
-                    <dd>{formatRatio(runStatus.eval_fallback_exact, runStatus.eval_fallback_total)}</dd>
-                  </div>
-                  <div>
-                    <dt>Invalid outputs</dt>
-                    <dd>{formatMetric(invalidCount)}</dd>
-                  </div>
-                </dl>
-              )}
-            </div>
-
-            <div className="panel panel--soft metrics-card">
-              <strong>Metrics</strong>
-              {Object.keys(metrics).length === 0 ? (
-                <p>No metrics yet.</p>
-              ) : (
-                <dl>
-                  {Object.entries(metrics).map(([name, value]) => (
-                    <div key={name}>
-                      <dt>{name}</dt>
-                      <dd>{formatMetric(value)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-            </div>
-          </div>
-
-          {runStatus.error ? (
-            <div className="feedback feedback--error">
-              <strong>Training failed</strong>
-              <p>{runStatus.error}</p>
-            </div>
+    <Card>
+      <Stack>
+        <Group justify="space-between">
+          <Title order={3}>Training run</Title>
+          {hasRunState ? (
+            <Badge color={status?.status === "failed" ? "red" : status?.status === "running" ? "blue" : "green"}>
+              {formatTrainingStatusLabel(status?.status)}
+            </Badge>
           ) : null}
-        </>
-      )}
-    </section>
+        </Group>
+
+        {!runStatus ? (
+          <Card bg="dark.7">
+            <Text c="dimmed">No training state yet.</Text>
+          </Card>
+        ) : (
+          <>
+            <Progress value={progressValue} />
+
+            <SimpleGrid cols={{ base: 2, sm: 4 }}>
+              {metricCard("Epoch", `${runStatus.current_epoch ?? 0} / ${runStatus.total_epochs ?? 0}`)}
+              {metricCard("Step", `${runStatus.current_step ?? 0} / ${runStatus.total_steps ?? 0}`)}
+              {metricCard("Loss", formatMetric(runStatus.loss))}
+              {metricCard("Checkpoint", runStatus.checkpoint_path ? "Ready" : "Pending")}
+            </SimpleGrid>
+
+            <Card bg="dark.7">
+              <Group justify="space-between" mb="xs">
+                <Text fw={650}>Loss curve</Text>
+                <Text size="sm" c="dimmed">
+                  {lossHistory.length === lossHistoryTotal
+                    ? `${lossHistory.length} samples`
+                    : `${lossHistory.length} shown / ${lossHistoryTotal} total`}
+                </Text>
+              </Group>
+              {sparkline ? (
+                <svg viewBox="0 0 1000 180" preserveAspectRatio="none" className="loss-chart" role="img" aria-label="Loss history">
+                  <polyline fill="none" stroke="currentColor" strokeWidth="4" points={sparkline} />
+                </svg>
+              ) : (
+                <Text size="sm" c="dimmed">Waiting for loss samples.</Text>
+              )}
+            </Card>
+
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              <Card bg="dark.7">
+                <Text fw={650} mb="sm">Evaluation</Text>
+                {runStatus.eval_total === 0 ? (
+                  <Text size="sm" c="dimmed">No evaluation yet.</Text>
+                ) : (
+                  <Stack gap={6}>
+                    <Text size="sm">Exact match: {formatRatio(runStatus.eval_exact, runStatus.eval_total)}</Text>
+                    <Text size="sm">Valid output: {formatRatio(runStatus.eval_valid, runStatus.eval_total)}</Text>
+                    <Text size="sm">Positive rows: {formatRatio(runStatus.eval_positive_exact, runStatus.eval_positive_total)}</Text>
+                    <Text size="sm">Fallback rows: {formatRatio(runStatus.eval_fallback_exact, runStatus.eval_fallback_total)}</Text>
+                    <Text size="sm">Invalid outputs: {formatMetric(invalidCount)}</Text>
+                  </Stack>
+                )}
+              </Card>
+
+              <Card bg="dark.7">
+                <Text fw={650} mb="sm">Metrics</Text>
+                {Object.keys(metrics).length === 0 ? (
+                  <Text size="sm" c="dimmed">No metrics.</Text>
+                ) : (
+                  <Stack gap={6}>
+                    {Object.entries(metrics).map(([name, value]) => (
+                      <Text key={name} size="sm">{name}: {formatMetric(value)}</Text>
+                    ))}
+                  </Stack>
+                )}
+              </Card>
+            </SimpleGrid>
+
+            {runStatus.error ? (
+              <Alert color="red" title="Training failed">{runStatus.error}</Alert>
+            ) : null}
+          </>
+        )}
+      </Stack>
+    </Card>
   );
 }

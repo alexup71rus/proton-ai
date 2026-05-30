@@ -1,8 +1,10 @@
 # Proton-X Service
 
-`service/` — FastAPI сервис для обучения и запуска текущей tiny router модели.
+`service/` — FastAPI ядро для обучения и запуска tiny-router модели Proton-X.
 
-В v1 модель делает одну узкую вещь: получает полный registry инструментов и генерирует OpenAI-style `tool_calls` JSON. Это не chat LLM; ответы пользователю и будущие цепочки действий должны строиться поверх validated tool execution.
+В продуктовой модели Proton-X пользователь описывает свои автоматизации как tools, генерирует dataset и обучает маленькую модель выбирать нужную команду с аргументами. `service/` отвечает именно за модельную часть этого цикла: validation контракта, prompt/runtime path, dataset bootstrap и training.
+
+Это не chat LLM и не универсальный ассистент. В v1 модель делает одну узкую вещь: получает registry инструментов и текст пользователя, затем генерирует OpenAI-style `tool_calls` JSON. Ответы пользователю, выполнение скриптов, UI state и будущие цепочки действий строятся поверх validated tool execution во внешнем слое.
 
 ## Контракт модели
 
@@ -23,6 +25,30 @@ Fallback тоже является tool call:
 ```
 
 Модель v1 не пишет обычный текст, fallback copy, объяснения и ответы пользователю. Это делает внешний слой после validation/execution.
+
+## Роль сервиса в Proton-X
+
+`service/` должен оставаться модельным ядром, а не местом для продуктовой логики автоматизации.
+
+Он отвечает за:
+
+- валидацию tool registry для поддерживаемого schema subset;
+- сборку компактного routing prompt;
+- запуск tiny-router runtime;
+- проверку JSON output и аргументов;
+- canonical fallback при ошибках;
+- генерацию bootstrap dataset;
+- обучение и сохранение checkpoint/tokenizer artifacts.
+
+Он не отвечает за:
+
+- исполнение пользовательских скриптов;
+- хранение UI workspace settings;
+- редактирование tools registry;
+- форматирование человекочитаемых ответов;
+- будущий marketplace/tools authoring слой.
+
+Такое разделение важно для будущей архитектуры: более умная модель или marketplace могут помогать создавать tools и datasets, но маленькая локальная модель должна только выбирать разрешённые tools и аргументы в строгом контракте.
 
 ## Runtime path
 
@@ -65,6 +91,8 @@ Validator проверяет JSON shape, candidate membership, required argument
 
 При ошибке route уходит в canonical fallback output.
 
+Это принципиально для сценария автоматизации: модель может ошибаться, но executor/frontend должны получать безопасный и предсказуемый результат, а не произвольный текст.
+
 ## Training data
 
 Основной компактный JSONL формат:
@@ -83,6 +111,13 @@ Validator проверяет JSON shape, candidate membership, required argument
 ```
 
 Legacy chat-shaped rows ещё принимаются для совместимости, но новые данные лучше держать в компактном формате.
+
+Dataset должен учить модель двум вещам:
+
+- выбирать правильный tool среди доступных candidates;
+- заполнять только валидные аргументы по компактному описанию schema.
+
+Fallback rows так же важны, как positive rows: они учат модель не вызывать случайную команду, когда запрос не покрывается текущим registry.
 
 ## API минимум
 

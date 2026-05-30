@@ -1,4 +1,5 @@
 from protonx.contracts import FALLBACK_TOOL_NAME
+from protonx.enum_values import enum_is_supported
 from protonx.schemas import ToolDefinition
 
 
@@ -21,7 +22,7 @@ def validate_supported_schema_subset(tools: list[ToolDefinition]) -> None:
                     f"unsupported schema type for {tool.name}.{field_name}"
                 )
             enum_values = property_schema.get("enum")
-            if enum_values is not None and not isinstance(enum_values, list):
+            if not enum_is_supported(enum_values):
                 raise ValueError(
                     f"unsupported enum definition for {tool.name}.{field_name}"
                 )

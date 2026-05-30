@@ -1,4 +1,17 @@
 import { useState } from "react";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Group,
+  Stack,
+  Switch,
+  Text,
+  Textarea,
+  Title,
+} from "@mantine/core";
+import { IconAlertCircle, IconPlayerPlay, IconX } from "@tabler/icons-react";
 
 import { runTest, type TestResponse, type WorkspaceModel, type WorkspaceTestSettings } from "../api";
 import { DebugPanel } from "../components/DebugPanel";
@@ -15,7 +28,7 @@ type TestRouteProps = {
 function formatResultStatus(status: string): string {
   switch (status) {
     case "tool_call":
-      return "tool selected";
+      return "tool";
     case "fallback":
       return "fallback";
     case "success":
@@ -25,6 +38,32 @@ function formatResultStatus(status: string): string {
     default:
       return status.split("_").join(" ");
   }
+}
+
+
+const testExamples = [
+  "папка загрузок",
+  "покажи npm -v",
+  "docker ps",
+  "как дела",
+];
+
+
+function hasArguments(argumentsPayload: TestResponse["result"]["arguments"]): boolean {
+  return Boolean(argumentsPayload && Object.keys(argumentsPayload).length > 0);
+}
+
+
+function executionResponse(result: TestResponse): string | null {
+  if (result.result.response) {
+    return result.result.response;
+  }
+  const output = result.result.execution?.output;
+  if (!output || typeof output !== "object" || Array.isArray(output)) {
+    return null;
+  }
+  const response = (output as Record<string, unknown>).response;
+  return typeof response === "string" && response.trim() ? response.trim() : null;
 }
 
 
@@ -45,6 +84,9 @@ export function TestRoute({ selectedModel, testSettings, onTestSettingsChange }:
   const modelReady = Boolean(selectedModel.model_path && selectedModel.tokenizer_path);
 
   async function handleRun() {
+    if (!userText.trim()) {
+      return;
+    }
     setIsRunning(true);
     setError(null);
     try {
@@ -63,117 +105,158 @@ export function TestRoute({ selectedModel, testSettings, onTestSettingsChange }:
 
   const isFallback = result?.result.status === "fallback";
   const execution = result?.result.execution;
+  const resultResponse = result ? executionResponse(result) : null;
+  const resultHasArguments = result ? hasArguments(result.result.arguments) : false;
 
   return (
-    <section className="page">
-      <header className="page-header">
+    <Stack gap="lg">
+      <Group justify="space-between" align="flex-end">
         <div>
-          <h1>Test</h1>
-          <p>Run a request against the selected model.</p>
+          <Title order={2}>Test router</Title>
+          <Text c="dimmed" size="sm">{selectedModel.label}</Text>
         </div>
-      </header>
+        <Badge color={modelReady ? "green" : "yellow"}>
+          {modelReady ? "model ready" : "model missing"}
+        </Badge>
+      </Group>
 
       {!modelReady ? (
-        <section className="panel empty-state test-empty-state">
-          <h2>Load a model first</h2>
-          <p>The test screen becomes available after you load saved files or finish a training run.</p>
-        </section>
+        <Alert color="yellow" title="Load a model first" icon={<IconAlertCircle size={18} />}>
+          The selected workspace model needs checkpoint and tokenizer paths.
+        </Alert>
       ) : (
         <>
-          <section className="panel test-panel">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">Request</span>
-                <h2>Run the router</h2>
-              </div>
-              <label className="toggle">
-                <input type="checkbox" checked={showDebug} onChange={(event) => setShowDebug(event.target.checked)} />
-                <span>Debug</span>
-              </label>
-            </div>
+          <Card>
+            <Stack>
+              <Group justify="space-between">
+                <Title order={3}>Request</Title>
+                <Switch checked={showDebug} onChange={(event) => setShowDebug(event.currentTarget.checked)} label="Debug details" />
+              </Group>
 
-            <textarea
-              className="hero-input"
-              value={userText}
-              onChange={(event) => setUserText(event.target.value)}
-              rows={6}
-              placeholder="turn on the lamp"
-            />
+              <Group gap="xs">
+                {testExamples.map((example) => (
+                  <Button
+                    key={example}
+                    size="compact-sm"
+                    variant="light"
+                    onClick={() => {
+                      setUserText(example);
+                      setResult(null);
+                      setError(null);
+                    }}
+                  >
+                    {example}
+                  </Button>
+                ))}
+              </Group>
 
-            <div className="action-bar action-bar--static">
-              <div className="action-bar__status">
-                <span className="pill pill--soft">Using {selectedModel.label}</span>
-              </div>
-              <div className="action-bar__actions">
-                <button className="button button--primary" disabled={isRunning || !userText.trim()} onClick={() => void handleRun()} type="button">
-                  {isRunning ? "Running..." : "Run test"}
-                </button>
-              </div>
-            </div>
-          </section>
+              <Textarea
+                value={userText}
+                onChange={(event) => {
+                  setUserText(event.currentTarget.value);
+                  setResult(null);
+                  setError(null);
+                }}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void handleRun();
+                  }
+                }}
+                minRows={3}
+                autosize
+                placeholder="покажи npm -v"
+              />
+
+              <Group justify="space-between">
+                <Group gap="xs">
+                  <Badge variant="light">Using {selectedModel.label}</Badge>
+                  <Text size="xs" c="dimmed">Cmd/Ctrl+Enter runs the request.</Text>
+                </Group>
+                <Group gap="xs">
+                  {userText ? (
+                    <Button variant="default" leftSection={<IconX size={15} />} onClick={() => setUserText("")}>
+                      Clear
+                    </Button>
+                  ) : null}
+                  <Button
+                    leftSection={<IconPlayerPlay size={16} />}
+                    disabled={isRunning || !userText.trim()}
+                    loading={isRunning}
+                    onClick={() => void handleRun()}
+                  >
+                    Run
+                  </Button>
+                </Group>
+              </Group>
+            </Stack>
+          </Card>
 
           {error ? (
-            <div className="feedback feedback--error">
-              <strong>Request failed</strong>
-              <p>{error}</p>
-            </div>
+            <Alert color="red" title="Request failed" icon={<IconAlertCircle size={18} />}>{error}</Alert>
           ) : null}
 
           {settingsError ? (
-            <div className="feedback feedback--error">
-              <strong>Could not save test settings</strong>
-              <p>{settingsError}</p>
-            </div>
-          ) : null}
-
-          {result ? (
-            <section className={`panel result-card${isFallback ? " result-card--fallback" : ""}`}>
-              <div className="section-heading">
-                <div>
-                  <span className="eyebrow">Result</span>
-                  <h2>{isFallback ? "Fallback returned" : "Tool call ready"}</h2>
-                </div>
-                <span className={`status-chip status-chip--${result.result.status}`}>{formatResultStatus(result.result.status)}</span>
-              </div>
-
-              {result.result.validation_error ? (
-                <div className="feedback feedback--error">
-                  <strong>Model output rejected</strong>
-                  <p>{result.result.validation_error}</p>
-                </div>
-              ) : null}
-
-              {result.result.tool_name ? (
-                <>
-                  <div className="result-card__grid">
-                    <div>
-                      <span>Tool</span>
-                      <strong>{result.result.tool_name}</strong>
-                    </div>
-                    <div>
-                      <span>Arguments</span>
-                      <pre>{JSON.stringify(result.result.arguments, null, 2)}</pre>
-                    </div>
-                  </div>
-                  {execution ? (
-                    <div className={`feedback feedback--${execution.error ? "error" : "info"}`}>
-                      <strong>{execution.error ? "Execution failed" : "Execution output"}</strong>
-                      {execution.error ? <p>{execution.error}</p> : null}
-                      {execution.output !== null ? <pre>{JSON.stringify(execution.output, null, 2)}</pre> : null}
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div className="empty-state empty-state--compact">
-                  <p>{result.result.response || "The router fell back instead of selecting a tool."}</p>
-                </div>
-              )}
-            </section>
+            <Alert color="red" title="Could not save test settings" icon={<IconAlertCircle size={18} />}>{settingsError}</Alert>
           ) : null}
 
           {showDebug && result ? <DebugPanel debug={result.debug} /> : null}
+
+          {result ? (
+            <Card>
+              <Stack>
+                <Group justify="space-between">
+                  <Title order={3}>{isFallback ? "Fallback" : "Tool call"}</Title>
+                  <Badge color={isFallback ? "yellow" : "green"}>
+                    {formatResultStatus(result.result.status)}
+                  </Badge>
+                </Group>
+
+                {result.result.validation_error ? (
+                  <Alert color="red" title="Model output rejected" icon={<IconAlertCircle size={18} />}>
+                    {result.result.validation_error}
+                  </Alert>
+                ) : null}
+
+                {result.result.tool_name ? (
+                  <>
+                    <Card bg="dark.7">
+                      <Stack gap="sm">
+                        <Text size="sm" c="dimmed">Tool</Text>
+                        <Text fw={700}>{result.result.tool_name}</Text>
+                        {resultHasArguments ? (
+                          <>
+                            <Text size="sm" c="dimmed">Arguments</Text>
+                            <pre className="json-block json-block--compact">{JSON.stringify(result.result.arguments, null, 2)}</pre>
+                          </>
+                        ) : null}
+                      </Stack>
+                    </Card>
+
+                    {execution?.error ? (
+                      <Alert color="red" title="Execution failed">
+                        <Text>{execution.error}</Text>
+                      </Alert>
+                    ) : null}
+
+                    {resultResponse ? (
+                      <Card bg="dark.7">
+                        <Text size="sm" c="dimmed">Response</Text>
+                        <Text>{resultResponse}</Text>
+                      </Card>
+                    ) : null}
+                  </>
+                ) : (
+                  <Card bg="dark.7">
+                    <Text>{result.result.response || "The router returned fallback."}</Text>
+                  </Card>
+                )}
+              </Stack>
+            </Card>
+          ) : null}
+
         </>
       )}
-    </section>
+    </Stack>
   );
 }

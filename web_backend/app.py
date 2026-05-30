@@ -12,10 +12,53 @@ from service.protonx.training.common import normalize_artifact_name as normalize
 
 from web_backend.config import get_tools_file
 from web_backend import service_client
-from web_backend.datasets import append_dataset_content, create_manual_dataset, delete_dataset, duplicate_dataset, get_dataset_preview, get_dataset_validation_report, import_dataset_file, list_dataset_files, resolve_dataset_path, save_bootstrap_dataset, summarize_dataset
+from web_backend.datasets import (
+    append_dataset_content,
+    create_manual_dataset,
+    delete_dataset,
+    duplicate_dataset,
+    get_dataset_preview,
+    get_dataset_validation_report,
+    import_dataset_file,
+    list_dataset_files,
+    resolve_dataset_path,
+    save_bootstrap_dataset,
+    summarize_dataset,
+)
 from web_backend.dataset_validation import FALLBACK_TOOL_NAME
-from web_backend.logs import export_failed_cases_as_dataset, load_human_logs
-from web_backend.schemas import DatasetAppendPayload, DatasetBootstrapPayload, DatasetBootstrapResponse, DatasetCreatePayload, DatasetDeleteResponse, DatasetDetailResponse, DatasetDuplicateResponse, DatasetMutationResponse, DatasetValidationReport, DatasetsResponse, ImportDatasetResponse, LogsExportResponse, LogsResponse, ModelImportResponse, SaveToolsResponse, TestPayload, TestResponse, ToolsPayload, ToolsResponse, TrainingStartPayload, TrainingStatusResponse, WorkspaceModelSettings, WorkspaceSettingsPayload, WorkspaceSettingsResponse, WorkspaceTestSettings, WorkspaceTrainingSettings
+from web_backend.logs import clear_human_logs, export_failed_cases_as_dataset, load_human_logs
+from web_backend.schemas import (
+    DatasetAppendPayload,
+    DatasetBootstrapPayload,
+    DatasetBootstrapResponse,
+    DatasetCreatePayload,
+    DatasetDeleteResponse,
+    DatasetDetailResponse,
+    DatasetDuplicateResponse,
+    DatasetMutationResponse,
+    DatasetValidationReport,
+    DatasetsResponse,
+    DirectoryEntry,
+    DirectoryListingResponse,
+    ImportDatasetResponse,
+    LogsClearResponse,
+    LogsExportResponse,
+    LogsResponse,
+    ModelArtifactStatusResponse,
+    ModelImportResponse,
+    SaveToolsResponse,
+    TestPayload,
+    TestResponse,
+    ToolsPayload,
+    ToolsResponse,
+    TrainingStartPayload,
+    TrainingStatusResponse,
+    WorkspaceModelSettings,
+    WorkspaceSettingsPayload,
+    WorkspaceSettingsResponse,
+    WorkspaceTestSettings,
+    WorkspaceTrainingSettings,
+)
 from web_backend.tools_store import load_tools, save_tools
 from web_backend.tool_executor import execute_tool, validate_tool_executor_paths
 from web_backend.workspace_store import load_workspace_settings, save_workspace_settings, update_workspace_settings
@@ -57,7 +100,10 @@ def _to_service_tool(tool: dict) -> dict:
         "name": tool.get("name", ""),
         "description": tool.get("description", ""),
         "tags": tool.get("tags", []),
-        "arguments_schema": tool.get("arguments_schema", {"type": "object", "properties": {}, "required": []}),
+        "arguments_schema": tool.get(
+            "arguments_schema",
+            {"type": "object", "properties": {}, "required": []},
+        ),
     }
 
 
@@ -76,11 +122,95 @@ def _resolve_output_root(output_root_dir: str) -> Path:
     return path
 
 
+def _resolve_directory_path(path: str | None) -> Path:
+    raw_path = (path or ".").strip() or "."
+    directory = Path(raw_path).expanduser()
+    if not directory.is_absolute():
+        directory = _repo_root() / directory
+    try:
+        return directory.resolve()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not resolve directory: {raw_path}") from exc
+
+
 def _normalize_artifact_name(artifact_name: str) -> str:
     try:
         return normalize_training_artifact_name(artifact_name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _model_artifact_paths(output_root_dir: str, artifact_name: str) -> tuple[Path, str, Path, Path, Path]:
+    normalized_artifact_name = _normalize_artifact_name(artifact_name)
+    resolved_output_root = _resolve_output_root(output_root_dir).resolve()
+    weights_dir = resolved_output_root / "weights"
+    tokenizers_dir = resolved_output_root / "tokenizers"
+    return (
+        resolved_output_root,
+        normalized_artifact_name,
+        weights_dir / f"{normalized_artifact_name}.pt",
+        tokenizers_dir / f"{normalized_artifact_name}.model",
+        tokenizers_dir / f"{normalized_artifact_name}.vocab",
+    )
+
+
+def _build_model_artifact_status(output_root_dir: str, artifact_name: str) -> ModelArtifactStatusResponse:
+    resolved_output_root, normalized_artifact_name, model_path, tokenizer_path, vocab_path = _model_artifact_paths(
+        output_root_dir,
+        artifact_name,
+    )
+    model_exists = model_path.exists()
+    tokenizer_exists = tokenizer_path.exists()
+    vocab_exists = vocab_path.exists()
+    return ModelArtifactStatusResponse(
+        output_root_dir=str(resolved_output_root),
+        artifact_name=normalized_artifact_name,
+        model_path=str(model_path),
+        tokenizer_path=str(tokenizer_path),
+        vocab_path=str(vocab_path),
+        model_exists=model_exists,
+        tokenizer_exists=tokenizer_exists,
+        vocab_exists=vocab_exists,
+        exists=model_exists or tokenizer_exists or vocab_exists,
+    )
+
+
+def _resolve_workspace_path(path: str | None) -> Path | None:
+    if not path:
+        return None
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = _repo_root() / candidate
+    return candidate.resolve()
+
+
+def _reject_existing_model_artifact(status: ModelArtifactStatusResponse, allowed_paths: set[Path] | None = None) -> None:
+    allowed = allowed_paths or set()
+    existing_paths = [
+        Path(path)
+        for path, exists in [
+            (status.model_path, status.model_exists),
+            (status.tokenizer_path, status.tokenizer_exists),
+            (status.vocab_path, status.vocab_exists),
+        ]
+        if exists
+    ]
+    conflicting_paths = [
+        path
+        for path in existing_paths
+        if path.resolve() not in allowed
+    ]
+    if not conflicting_paths:
+        return
+
+    paths = ", ".join(str(path) for path in conflicting_paths)
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"Model artifact '{status.artifact_name}' already exists in {status.output_root_dir}: "
+            f"{paths}. Choose another artifact name or root."
+        ),
+    )
 
 
 def _load_workspace_settings() -> WorkspaceSettingsResponse:
@@ -155,6 +285,40 @@ def get_workspace_settings() -> WorkspaceSettingsResponse:
 @app.put("/api/workspace", response_model=WorkspaceSettingsResponse)
 def put_workspace_settings(payload: WorkspaceSettingsPayload) -> WorkspaceSettingsResponse:
     return _save_workspace_settings(payload)
+
+
+@app.get("/api/filesystem/directories", response_model=DirectoryListingResponse)
+def list_directories(path: str | None = Query(default=".")) -> DirectoryListingResponse:
+    directory = _resolve_directory_path(path)
+    if not directory.exists():
+        raise HTTPException(status_code=404, detail="Directory does not exist.")
+    if not directory.is_dir():
+        raise HTTPException(status_code=400, detail="Path is not a directory.")
+
+    entries: list[DirectoryEntry] = []
+    try:
+        children = list(directory.iterdir())
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Directory is not readable.") from exc
+
+    for child in children:
+        try:
+            if child.is_dir():
+                entries.append(DirectoryEntry(name=child.name, path=str(child)))
+        except OSError:
+            continue
+
+    entries.sort(key=lambda entry: (entry.name.startswith("."), entry.name.lower()))
+    parent_path = str(directory.parent) if directory.parent != directory else None
+    return DirectoryListingResponse(path=str(directory), parent_path=parent_path, entries=entries)
+
+
+@app.get("/api/models/artifact-status", response_model=ModelArtifactStatusResponse)
+def get_model_artifact_status(
+    output_root_dir: str = Query(default="data"),
+    artifact_name: str = Query(default="tiny_router_v1"),
+) -> ModelArtifactStatusResponse:
+    return _build_model_artifact_status(output_root_dir, artifact_name)
 
 
 @app.get("/api/tools", response_model=ToolsResponse)
@@ -344,20 +508,22 @@ async def import_model(
     output_root_dir: str = Form(default="data"),
     artifact_name: str = Form(default="tiny_router_v1"),
 ) -> ModelImportResponse:
-    normalized_artifact_name = _normalize_artifact_name(artifact_name)
-    resolved_output_root = _resolve_output_root(output_root_dir)
+    artifact_status = _build_model_artifact_status(output_root_dir, artifact_name)
+    _reject_existing_model_artifact(artifact_status)
+    normalized_artifact_name = artifact_status.artifact_name
+    resolved_output_root = Path(artifact_status.output_root_dir)
     weights_dir = resolved_output_root / "weights"
     tokenizers_dir = resolved_output_root / "tokenizers"
     weights_dir.mkdir(parents=True, exist_ok=True)
     tokenizers_dir.mkdir(parents=True, exist_ok=True)
 
-    model_path = weights_dir / f"{normalized_artifact_name}.pt"
-    tokenizer_path = tokenizers_dir / f"{normalized_artifact_name}.model"
+    model_path = Path(artifact_status.model_path)
+    tokenizer_path = Path(artifact_status.tokenizer_path)
     model_path.write_bytes(await checkpoint.read())
     tokenizer_path.write_bytes(await tokenizer.read())
 
     if vocab is not None:
-        vocab_path = tokenizers_dir / f"{normalized_artifact_name}.vocab"
+        vocab_path = Path(artifact_status.vocab_path)
         vocab_path.write_bytes(await vocab.read())
 
     workspace = _load_workspace_settings()
@@ -418,6 +584,25 @@ def start_training(payload: TrainingStartPayload) -> TrainingStatusResponse:
     else:
         resume_tokenizer_path = None
 
+    artifact_status = _build_model_artifact_status(output_root_dir, artifact_name)
+    allowed_existing_paths: set[Path] = set()
+    resolved_resume_model_path = _resolve_workspace_path(resume_model_path)
+    resolved_resume_tokenizer_path = _resolve_workspace_path(resume_tokenizer_path)
+    if (
+        resolved_resume_model_path
+        and resolved_resume_tokenizer_path
+        and resolved_resume_model_path == Path(artifact_status.model_path).resolve()
+        and resolved_resume_tokenizer_path == Path(artifact_status.tokenizer_path).resolve()
+    ):
+        allowed_existing_paths.update(
+            {
+                Path(artifact_status.model_path).resolve(),
+                Path(artifact_status.tokenizer_path).resolve(),
+                Path(artifact_status.vocab_path).resolve(),
+            }
+        )
+    _reject_existing_model_artifact(artifact_status, allowed_existing_paths)
+
     try:
         dataset_path = resolve_dataset_path(dataset_name)
     except ValueError as exc:
@@ -456,22 +641,22 @@ def start_training(payload: TrainingStartPayload) -> TrainingStatusResponse:
 
     return _normalize_training_status(
         service_client.post_json(
-        "/train/start",
-        {
-            "dataset_path": str(dataset_path),
-            "epochs": epochs,
-            "batch_size": batch_size,
-            "model_name": model_name,
-            "tokenizer_name": tokenizer_name,
-            "output_root_dir": output_root_dir,
-            "artifact_name": artifact_name,
-            "resume_model_path": resume_model_path,
-            "resume_tokenizer_path": resume_tokenizer_path,
-            "hidden_dim": hidden_dim,
-            "num_layers": num_layers,
-            "num_heads": num_heads,
-            "learning_rate": learning_rate,
-        },
+            "/train/start",
+            {
+                "dataset_path": str(dataset_path),
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "model_name": model_name,
+                "tokenizer_name": tokenizer_name,
+                "output_root_dir": output_root_dir,
+                "artifact_name": artifact_name,
+                "resume_model_path": resume_model_path,
+                "resume_tokenizer_path": resume_tokenizer_path,
+                "hidden_dim": hidden_dim,
+                "num_layers": num_layers,
+                "num_heads": num_heads,
+                "learning_rate": learning_rate,
+            },
         )
     )
 
@@ -538,6 +723,11 @@ def run_test(payload: TestPayload) -> TestResponse:
 @app.get("/api/logs", response_model=LogsResponse)
 def get_logs() -> LogsResponse:
     return LogsResponse(rows=load_human_logs())
+
+
+@app.delete("/api/logs", response_model=LogsClearResponse)
+def clear_logs() -> LogsClearResponse:
+    return LogsClearResponse(rows_deleted=clear_human_logs())
 
 
 @app.post("/api/logs/export-failed-cases", response_model=LogsExportResponse)

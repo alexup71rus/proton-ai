@@ -11,6 +11,7 @@ import hashlib
 import json
 from typing import Any
 
+from protonx.enum_values import enum_entries
 from protonx.schemas import JsonSchema, ToolDefinition
 
 
@@ -99,8 +100,14 @@ def compact_args_from_schema(schema: JsonSchema | dict[str, Any]) -> dict[str, A
             continue
         description = str(property_schema.get("description") or "").strip()
         enum_values = property_schema.get("enum")
-        if isinstance(enum_values, list) and enum_values:
-            enum_spec: dict[str, Any] = {"enum": [str(value) for value in enum_values]}
+        entries = enum_entries(enum_values)
+        if entries:
+            enum_spec: dict[str, Any] = {
+                "enum": {
+                    value: description or ""
+                    for value, description in entries
+                }
+            }
             if description:
                 enum_spec["description"] = description
             compact_args[field_name] = enum_spec
@@ -200,15 +207,6 @@ def normalize_dataset_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _split_enum_label(value: str) -> tuple[str, str | None]:
-    enum_value, separator, enum_description = value.partition(":")
-    normalized_value = enum_value.strip()
-    normalized_description = enum_description.strip()
-    if separator and normalized_value and normalized_description:
-        return normalized_value, normalized_description
-    return value.strip(), None
-
-
 def _format_tool_line(tool: dict[str, Any]) -> str:
     tags = [str(tag) for tag in tool.get("tags", []) if str(tag).strip()]
     if not tags:
@@ -226,10 +224,10 @@ def _format_tool_line(tool: dict[str, Any]) -> str:
                 if isinstance(raw_description, str) and raw_description.strip():
                     description = f" ({raw_description.strip()})"
                 enum_values = spec.get("enum")
-                if isinstance(enum_values, list):
+                rendered_entries = enum_entries(enum_values)
+                if rendered_entries:
                     rendered_values: list[str] = []
-                    for value in enum_values:
-                        enum_value, enum_description = _split_enum_label(str(value))
+                    for enum_value, enum_description in rendered_entries:
                         rendered_value = enum_value
                         if enum_description:
                             rendered_value = f"{enum_value}: {enum_description}"
@@ -239,8 +237,7 @@ def _format_tool_line(tool: dict[str, Any]) -> str:
                     rendered_spec = str(spec.get("type") or "string")
             elif isinstance(spec, list):
                 rendered_values: list[str] = []
-                for value in spec:
-                    enum_value, enum_description = _split_enum_label(str(value))
+                for enum_value, enum_description in enum_entries(spec):
                     rendered_value = enum_value
                     if enum_description:
                         rendered_value = f"{enum_value}: {enum_description}"

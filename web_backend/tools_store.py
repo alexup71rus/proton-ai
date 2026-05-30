@@ -7,6 +7,7 @@ from typing import Any
 import yaml
 
 from web_backend.config import get_tools_file
+from web_backend.enum_values import normalize_tool_enum_values
 from web_backend.tool_executor import get_default_tools
 
 
@@ -38,8 +39,10 @@ def load_tools() -> list[dict[str, Any]]:
     if not raw:
         return []
     if path.suffix in {".yaml", ".yml"}:
-        return yaml.safe_load(raw) or []
-    return json.loads(raw)
+        tools = yaml.safe_load(raw) or []
+    else:
+        tools = json.loads(raw)
+    return [normalize_tool_enum_values(tool) for tool in tools if isinstance(tool, dict)]
 
 
 def save_tools(tools: list[dict[str, Any]]) -> Path:

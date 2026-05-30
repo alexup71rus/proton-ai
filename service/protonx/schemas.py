@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class JsonSchema(BaseModel):
@@ -26,6 +26,8 @@ class ToolRegistryResponse(BaseModel):
 
 
 class RoutePreviewRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     user_text: str
     tools: list[ToolDefinition]
     strict_mode: bool = True
@@ -34,6 +36,8 @@ class RoutePreviewRequest(BaseModel):
 
 
 class RoutePreviewResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     user_text: str
     serialized_prompt: str
     model_output: str
@@ -50,6 +54,8 @@ class ChatMessage(BaseModel):
 
 
 class ChatCompletionsRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     messages: list[ChatMessage]
     tools: list[ToolDefinition]
     tool_choice: str = "auto"
@@ -59,6 +65,8 @@ class ChatCompletionsRequest(BaseModel):
 
 
 class TrainStartRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     dataset_path: str
     epochs: int = 1
     batch_size: int = 1

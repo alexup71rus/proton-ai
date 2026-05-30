@@ -1,8 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import {
+  Alert,
+  Badge,
+  Button,
+  FileInput,
+  Group,
+  Loader,
+  Modal,
+  NumberInput,
+  ScrollArea,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
+import {
+  IconAlertCircle,
+  IconArrowUp,
+  IconCheck,
+  IconDatabase,
+  IconFlask,
+  IconFolder,
+  IconListDetails,
+  IconPlayerPlay,
+  IconSettings,
+  IconUpload,
+} from "@tabler/icons-react";
 
 import {
+  fetchDirectories,
+  fetchModelArtifactStatus,
   importModelArtifacts,
+  type DirectoryListingResponse,
+  type ModelArtifactStatusResponse,
   type WorkspaceModel,
 } from "./api";
 import { AppShell } from "./components/AppShell";
@@ -20,31 +51,32 @@ const navItems = [
   {
     to: "/",
     label: "Tools",
-    step: "01",
-    description: "Define the registry and keep the source of truth clean.",
+    description: "Registry",
+    icon: <IconListDetails size={18} />,
   },
   {
     to: "/dataset-training",
-    label: "Dataset + Training",
-    step: "02",
-    description: "Pick a dataset, then train or fine-tune the active model.",
+    label: "Training",
+    description: "Dataset",
+    icon: <IconDatabase size={18} />,
   },
   {
     to: "/test",
     label: "Test",
-    step: "03",
-    description: "Run requests against the currently selected model.",
+    description: "Router run",
+    icon: <IconPlayerPlay size={18} />,
   },
   {
     to: "/logs",
     label: "Logs",
-    step: "04",
-    description: "Turn failures into the next improvement loop.",
+    description: "Incidents",
+    icon: <IconFlask size={18} />,
   },
 ];
 
 
 type ModelDialog = "create" | "load" | null;
+type RootPickerTarget = "create" | "load" | null;
 
 
 type CreateModelDraft = {
@@ -62,6 +94,14 @@ type LoadModelDraft = {
   checkpointFile: File | null;
   tokenizerFile: File | null;
   vocabFile: File | null;
+};
+
+
+type ArtifactLookupState = {
+  key: string;
+  state: "loading" | "ready" | "error";
+  status: ModelArtifactStatusResponse | null;
+  error: string | null;
 };
 
 
@@ -87,6 +127,304 @@ function toLoadDraft(model: WorkspaceModel): LoadModelDraft {
 }
 
 
+function numberOrFallback(value: string | number, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+
+function compactPath(path: string | undefined): string {
+  if (!path) {
+    return "";
+  }
+  const marker = "/proton-x/";
+  const markerIndex = path.indexOf(marker);
+  if (markerIndex >= 0) {
+    return path.slice(markerIndex + marker.length);
+  }
+  return path;
+}
+
+
+function artifactLookupKey(target: Exclude<RootPickerTarget, null>, outputRootDir: string, artifactName: string): string {
+  return `${target}:${outputRootDir.trim()}:${artifactName.trim()}`;
+}
+
+
+function getArtifactNameInputError(artifactName: string): string | null {
+  const trimmed = artifactName.trim();
+  if (!trimmed) {
+    return "Artifact name is required.";
+  }
+  if (trimmed.includes("/") || trimmed.includes("\\")) {
+    return "Use a file name, not a path.";
+  }
+  if (trimmed === "." || trimmed === "..") {
+    return "Use a real file name.";
+  }
+  return null;
+}
+
+
+function getExistingArtifactPaths(status: ModelArtifactStatusResponse): string[] {
+  return [
+    status.model_exists ? status.model_path : null,
+    status.tokenizer_exists ? status.tokenizer_path : null,
+    status.vocab_exists ? status.vocab_path : null,
+  ].filter((path): path is string => Boolean(path));
+}
+
+
+function getArtifactBlockingMessage(
+  outputRootDir: string,
+  artifactName: string,
+  lookup: ArtifactLookupState | null,
+): string | null {
+  if (!outputRootDir.trim()) {
+    return "Artifacts root is required.";
+  }
+  const nameError = getArtifactNameInputError(artifactName);
+  if (nameError) {
+    return nameError;
+  }
+  if (!lookup || lookup.state === "loading") {
+    return "Checking artifact name...";
+  }
+  if (lookup.state === "error") {
+    return lookup.error || "Could not check artifact name.";
+  }
+  if (lookup.status?.exists) {
+    return `Artifact "${lookup.status.artifact_name}" already exists in ${compactPath(lookup.status.output_root_dir)}. Choose another name or root.`;
+  }
+  return null;
+}
+
+
+function ArtifactStatusNotice({
+  lookup,
+  blockingMessage,
+}: {
+  lookup: ArtifactLookupState | null;
+  blockingMessage: string | null;
+}) {
+  if (!blockingMessage) {
+    return null;
+  }
+  if (lookup?.state === "loading" || blockingMessage === "Checking artifact name...") {
+    return <Text size="sm" c="dimmed">Checking artifact name...</Text>;
+  }
+
+  const existingPaths = lookup?.status?.exists ? getExistingArtifactPaths(lookup.status) : [];
+
+  return (
+    <Alert color="red" icon={<IconAlertCircle size={18} />}>
+      <Stack gap={4}>
+        <Text size="sm">{blockingMessage}</Text>
+        {existingPaths.length > 0 ? (
+          <Text size="xs" c="dimmed">
+            Existing files: {existingPaths.map(compactPath).join(", ")}
+          </Text>
+        ) : null}
+      </Stack>
+    </Alert>
+  );
+}
+
+
+type ArtifactRootInputProps = {
+  value: string;
+  currentRoot: string;
+  onChange: (value: string) => void;
+  onBrowse: () => void;
+};
+
+
+function ArtifactRootInput({ value, currentRoot, onChange, onBrowse }: ArtifactRootInputProps) {
+  const presets = [
+    { label: "data/", value: "data" },
+    ...(currentRoot && currentRoot !== "data" ? [{ label: "current", value: currentRoot }] : []),
+  ];
+
+  return (
+    <Stack gap={6}>
+      <Group align="flex-end" wrap="nowrap">
+        <TextInput
+          label="Artifacts root"
+          description="Folder for weights and tokenizer files."
+          value={value}
+          leftSection={<IconFolder size={16} />}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          style={{ flex: 1 }}
+        />
+        <Button variant="default" leftSection={<IconFolder size={16} />} onClick={onBrowse}>
+          Browse
+        </Button>
+      </Group>
+      <Group gap={6}>
+        {presets.map((preset) => (
+          <Button
+            key={`${preset.label}-${preset.value}`}
+            size="compact-xs"
+            variant="light"
+            onClick={() => onChange(preset.value)}
+          >
+            {preset.label}
+          </Button>
+        ))}
+      </Group>
+    </Stack>
+  );
+}
+
+
+type DirectoryPickerModalProps = {
+  opened: boolean;
+  initialPath: string;
+  onClose: () => void;
+  onSelect: (path: string) => void;
+};
+
+
+function DirectoryPickerModal({ opened, initialPath, onClose, onSelect }: DirectoryPickerModalProps) {
+  const [currentPath, setCurrentPath] = useState(initialPath || "data");
+  const [draftPath, setDraftPath] = useState(initialPath || "data");
+  const [listing, setListing] = useState<DirectoryListingResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!opened) {
+      return;
+    }
+    const nextPath = initialPath || "data";
+    setCurrentPath(nextPath);
+    setDraftPath(nextPath);
+  }, [initialPath, opened]);
+
+  useEffect(() => {
+    if (!opened) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void fetchDirectories(currentPath)
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setListing(payload);
+        setDraftPath(payload.path);
+      })
+      .catch((caught) => {
+        if (cancelled) {
+          return;
+        }
+        setListing(null);
+        setError(caught instanceof Error ? caught.message : "Could not read directory.");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPath, opened]);
+
+  function openPath(path: string) {
+    const nextPath = path.trim();
+    if (nextPath) {
+      setCurrentPath(nextPath);
+    }
+  }
+
+  function selectCurrentPath() {
+    onSelect(listing?.path ?? currentPath);
+    onClose();
+  }
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Choose artifacts root" size="lg" centered>
+      <Stack>
+        <Group align="flex-end" wrap="nowrap">
+          <TextInput
+            label="Path"
+            value={draftPath}
+            leftSection={<IconFolder size={16} />}
+            onChange={(event) => setDraftPath(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                openPath(draftPath);
+              }
+            }}
+            style={{ flex: 1 }}
+          />
+          <Button variant="default" onClick={() => openPath(draftPath)}>
+            Open
+          </Button>
+        </Group>
+
+        <Group gap={6}>
+          <Button size="compact-xs" variant="light" onClick={() => openPath("data")}>data/</Button>
+          <Button size="compact-xs" variant="light" onClick={() => openPath(".")}>repo root</Button>
+          <Button size="compact-xs" variant="light" onClick={() => openPath("~")}>home</Button>
+        </Group>
+
+        {error ? (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>{error}</Alert>
+        ) : null}
+
+        <ScrollArea.Autosize mah={320}>
+          <Stack gap={6}>
+            {listing?.parent_path ? (
+              <Button
+                variant="subtle"
+                justify="flex-start"
+                leftSection={<IconArrowUp size={16} />}
+                onClick={() => openPath(listing.parent_path || ".")}
+              >
+                Parent folder
+              </Button>
+            ) : null}
+            {loading ? (
+              <Group>
+                <Loader size="sm" />
+                <Text c="dimmed" size="sm">Reading directories...</Text>
+              </Group>
+            ) : listing?.entries.length ? (
+              listing.entries.map((entry) => (
+                <Button
+                  key={entry.path}
+                  variant="subtle"
+                  color="gray"
+                  justify="flex-start"
+                  leftSection={<IconFolder size={16} />}
+                  onClick={() => openPath(entry.path)}
+                >
+                  {entry.name}
+                </Button>
+              ))
+            ) : (
+              <Text c="dimmed" size="sm">No child directories.</Text>
+            )}
+          </Stack>
+        </ScrollArea.Autosize>
+
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button leftSection={<IconCheck size={16} />} onClick={selectCurrentPath} disabled={Boolean(error)}>
+            Use this folder
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+
 export function App() {
   const {
     selectedModel,
@@ -102,8 +440,74 @@ export function App() {
   const [dialog, setDialog] = useState<ModelDialog>(null);
   const [createDraft, setCreateDraft] = useState<CreateModelDraft>(() => toCreateDraft(defaultWorkspaceModel()));
   const [loadDraft, setLoadDraft] = useState<LoadModelDraft>(() => toLoadDraft(defaultWorkspaceModel()));
-  const [workspaceNotice, setWorkspaceNotice] = useState<{ tone: "error" | "info"; message: string } | null>(null);
+  const [rootPickerTarget, setRootPickerTarget] = useState<RootPickerTarget>(null);
+  const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
   const [isImportingModel, setIsImportingModel] = useState(false);
+  const [artifactLookup, setArtifactLookup] = useState<ArtifactLookupState | null>(null);
+
+  const createArtifactKey = artifactLookupKey("create", createDraft.output_root_dir, createDraft.artifact_name);
+  const loadArtifactKey = artifactLookupKey("load", loadDraft.output_root_dir, loadDraft.artifact_name);
+  const createArtifactLookup = artifactLookup?.key === createArtifactKey ? artifactLookup : null;
+  const loadArtifactLookup = artifactLookup?.key === loadArtifactKey ? artifactLookup : null;
+  const createArtifactBlocker = getArtifactBlockingMessage(
+    createDraft.output_root_dir,
+    createDraft.artifact_name,
+    createArtifactLookup,
+  );
+  const loadArtifactBlocker = getArtifactBlockingMessage(
+    loadDraft.output_root_dir,
+    loadDraft.artifact_name,
+    loadArtifactLookup,
+  );
+
+  useEffect(() => {
+    const target: Exclude<RootPickerTarget, null> | null = dialog === "create" || dialog === "load" ? dialog : null;
+    if (!target) {
+      setArtifactLookup(null);
+      return;
+    }
+
+    const draft = target === "create" ? createDraft : loadDraft;
+    const outputRootDir = draft.output_root_dir.trim();
+    const artifactName = draft.artifact_name.trim();
+    const key = artifactLookupKey(target, outputRootDir, artifactName);
+    if (!outputRootDir || getArtifactNameInputError(artifactName)) {
+      setArtifactLookup(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      setArtifactLookup({ key, state: "loading", status: null, error: null });
+      void fetchModelArtifactStatus(outputRootDir, artifactName)
+        .then((status) => {
+          if (!cancelled) {
+            setArtifactLookup({ key, state: "ready", status, error: null });
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setArtifactLookup({
+              key,
+              state: "error",
+              status: null,
+              error: error instanceof Error ? error.message : "Could not check artifact name.",
+            });
+          }
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [
+    createDraft.artifact_name,
+    createDraft.output_root_dir,
+    dialog,
+    loadDraft.artifact_name,
+    loadDraft.output_root_dir,
+  ]);
 
   function openCreateDialog() {
     setCreateDraft(toCreateDraft(selectedModel));
@@ -117,13 +521,9 @@ export function App() {
     setDialog("load");
   }
 
-  function closeDialog() {
-    setDialog(null);
-  }
-
   async function applyCreateModel() {
-    if (!createDraft.output_root_dir.trim() || !createDraft.artifact_name.trim()) {
-      setWorkspaceNotice({ tone: "error", message: "Fill the save root and artifact name before creating the model draft." });
+    if (createArtifactBlocker) {
+      setWorkspaceNotice(createArtifactBlocker);
       return;
     }
 
@@ -148,13 +548,17 @@ export function App() {
       setWorkspaceNotice(null);
       setDialog(null);
     } catch (error) {
-      setWorkspaceNotice({ tone: "error", message: error instanceof Error ? error.message : "Could not save model." });
+      setWorkspaceNotice(error instanceof Error ? error.message : "Не удалось сохранить модель.");
     }
   }
 
   async function applyLoadedModel() {
+    if (loadArtifactBlocker) {
+      setWorkspaceNotice(loadArtifactBlocker);
+      return;
+    }
     if (!loadDraft.checkpointFile || !loadDraft.tokenizerFile) {
-      setWorkspaceNotice({ tone: "error", message: "Choose checkpoint and tokenizer files before loading the model." });
+      setWorkspaceNotice("Выбери checkpoint `.pt` и tokenizer `.model`.");
       return;
     }
 
@@ -184,57 +588,50 @@ export function App() {
       setWorkspaceNotice(null);
       setDialog(null);
     } catch (error) {
-      setWorkspaceNotice({ tone: "error", message: error instanceof Error ? error.message : "Model import failed." });
+      setWorkspaceNotice(error instanceof Error ? error.message : "Не удалось загрузить модель.");
     } finally {
       setIsImportingModel(false);
     }
   }
 
-  const workspaceToolbar = (
-    <section className="workspace-toolbar panel">
-      <div className="workspace-toolbar__main">
-        <div className="workspace-toolbar__title">
-          <strong>{selectedModel.label}</strong>
-        </div>
+  function applyPickedArtifactRoot(path: string) {
+    setWorkspaceNotice(null);
+    if (rootPickerTarget === "create") {
+      setCreateDraft((current) => ({ ...current, output_root_dir: path }));
+      return;
+    }
+    if (rootPickerTarget === "load") {
+      setLoadDraft((current) => ({ ...current, output_root_dir: path }));
+    }
+  }
 
-        <div className="workspace-toolbar__actions">
-          <button className="button button--primary" type="button" onClick={openCreateDialog}>
-            Create model
-          </button>
-          <button className="button button--secondary" type="button" onClick={openLoadDialog}>
-            Load model
-          </button>
-        </div>
+  const workspaceToolbar = (
+    <Group gap="xs" wrap="nowrap">
+      <div className="model-summary-pill">
+        <Badge size="sm" variant={selectedModel.mode === "loaded" ? "filled" : "light"}>
+          {selectedModel.mode === "loaded" ? "loaded" : "draft"}
+        </Badge>
+        <Text size="sm" fw={650} truncate maw={180}>
+          {selectedModel.label}
+        </Text>
       </div>
-    </section>
+      <Button size="xs" variant="light" leftSection={<IconSettings size={15} />} onClick={openCreateDialog}>
+        Configure
+      </Button>
+      <Button size="xs" variant="subtle" leftSection={<IconUpload size={15} />} onClick={openLoadDialog}>
+        Import
+      </Button>
+    </Group>
   );
 
   const workspaceContent = workspaceLoadState === "loading" ? (
-    <section className="page">
-      <header className="page-header">
-        <div>
-          <h1>Workspace</h1>
-          <p>Loading backend workspace settings.</p>
-        </div>
-      </header>
-      <section className="panel empty-state">
-        <h2>Loading workspace state</h2>
-        <p>Selected model, training defaults and test settings are loaded from the backend.</p>
-      </section>
-    </section>
+    <Stack gap="md">
+      <Text c="dimmed">Loading workspace...</Text>
+    </Stack>
   ) : workspaceLoadState === "error" ? (
-    <section className="page">
-      <header className="page-header">
-        <div>
-          <h1>Workspace</h1>
-          <p>Backend workspace settings could not be loaded.</p>
-        </div>
-      </header>
-      <div className="feedback feedback--error">
-        <strong>Workspace load failed</strong>
-        <p>{workspaceLoadError || "Unknown error."}</p>
-      </div>
-    </section>
+    <Alert color="red" title="Workspace load failed" icon={<IconAlertCircle size={18} />}>
+      {workspaceLoadError || "Unknown error."}
+    </Alert>
   ) : (
     <Routes>
       <Route path="/" element={<ToolsRoute />} />
@@ -267,113 +664,123 @@ export function App() {
         {workspaceContent}
       </AppShell>
 
-      {workspaceLoadState === "ready" && dialog === "create" ? (
-        <div className="modal-backdrop" role="presentation" onClick={closeDialog}>
-          <div className="modal-panel panel" role="dialog" aria-modal="true" aria-label="Create model" onClick={(event) => event.stopPropagation()}>
-            <div className="section-heading section-heading--tight">
-              <div>
-                <span className="eyebrow">Model</span>
-                <h2>Create model</h2>
-              </div>
-            </div>
+      <Modal opened={workspaceLoadState === "ready" && dialog === "create"} onClose={() => setDialog(null)} title="Model draft" size="lg" centered>
+        <Stack>
+          <ArtifactRootInput
+            value={createDraft.output_root_dir}
+            currentRoot={selectedModel.output_root_dir}
+            onChange={(output_root_dir) => {
+              setWorkspaceNotice(null);
+              setCreateDraft((current) => ({ ...current, output_root_dir }));
+            }}
+            onBrowse={() => setRootPickerTarget("create")}
+          />
 
-            <div className="tool-editor__grid">
-              <label className="field field--wide">
-                <span>Artifacts root</span>
-                <input className="input" type="text" value={createDraft.output_root_dir} onChange={(event) => setCreateDraft((current) => ({ ...current, output_root_dir: event.target.value }))} />
-              </label>
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <TextInput
+              label="Artifact name"
+              error={getArtifactNameInputError(createDraft.artifact_name)}
+              value={createDraft.artifact_name}
+              onChange={(event) => {
+                setWorkspaceNotice(null);
+                setCreateDraft((current) => ({ ...current, artifact_name: event.currentTarget.value }));
+              }}
+            />
+            <NumberInput
+              label="Hidden size"
+              min={8}
+              step={8}
+              value={createDraft.hidden_dim}
+              onChange={(value) => setCreateDraft((current) => ({ ...current, hidden_dim: numberOrFallback(value, 64) }))}
+            />
+            <NumberInput
+              label="Layers"
+              min={1}
+              value={createDraft.num_layers}
+              onChange={(value) => setCreateDraft((current) => ({ ...current, num_layers: numberOrFallback(value, 1) }))}
+            />
+            <NumberInput
+              label="Heads"
+              min={1}
+              value={createDraft.num_heads}
+              onChange={(value) => setCreateDraft((current) => ({ ...current, num_heads: numberOrFallback(value, 1) }))}
+            />
+          </SimpleGrid>
 
-              <label className="field field--wide">
-                <span>Artifact name</span>
-                <input className="input" type="text" value={createDraft.artifact_name} onChange={(event) => setCreateDraft((current) => ({ ...current, artifact_name: event.target.value }))} />
-              </label>
+          <ArtifactStatusNotice lookup={createArtifactLookup} blockingMessage={createArtifactBlocker} />
 
-              <label className="field">
-                <span>Hidden size</span>
-                <input className="input" type="number" min={8} step={8} value={createDraft.hidden_dim} onChange={(event) => setCreateDraft((current) => ({ ...current, hidden_dim: Number(event.target.value) || 64 }))} />
-              </label>
+          {workspaceNotice ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />}>{workspaceNotice}</Alert>
+          ) : null}
 
-              <label className="field">
-                <span>Layers</span>
-                <input className="input" type="number" min={1} value={createDraft.num_layers} onChange={(event) => setCreateDraft((current) => ({ ...current, num_layers: Number(event.target.value) || 1 }))} />
-              </label>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDialog(null)}>Cancel</Button>
+            <Button disabled={Boolean(createArtifactBlocker)} onClick={() => void applyCreateModel()}>Save draft</Button>
+          </Group>
+        </Stack>
+      </Modal>
 
-              <label className="field">
-                <span>Heads</span>
-                <input className="input" type="number" min={1} value={createDraft.num_heads} onChange={(event) => setCreateDraft((current) => ({ ...current, num_heads: Number(event.target.value) || 1 }))} />
-              </label>
-            </div>
+      <Modal opened={workspaceLoadState === "ready" && dialog === "load"} onClose={() => setDialog(null)} title="Load model files" size="lg" centered>
+        <Stack>
+          <ArtifactRootInput
+            value={loadDraft.output_root_dir}
+            currentRoot={selectedModel.output_root_dir}
+            onChange={(output_root_dir) => {
+              setWorkspaceNotice(null);
+              setLoadDraft((current) => ({ ...current, output_root_dir }));
+            }}
+            onBrowse={() => setRootPickerTarget("load")}
+          />
+          <TextInput
+            label="Artifact name"
+            error={getArtifactNameInputError(loadDraft.artifact_name)}
+            value={loadDraft.artifact_name}
+            onChange={(event) => {
+              setWorkspaceNotice(null);
+              setLoadDraft((current) => ({ ...current, artifact_name: event.currentTarget.value }));
+            }}
+          />
+          <FileInput
+            label="Checkpoint file"
+            accept=".pt"
+            value={loadDraft.checkpointFile}
+            onChange={(file) => setLoadDraft((current) => ({ ...current, checkpointFile: file }))}
+          />
+          <FileInput
+            label="Tokenizer file"
+            accept=".model"
+            value={loadDraft.tokenizerFile}
+            onChange={(file) => setLoadDraft((current) => ({ ...current, tokenizerFile: file }))}
+          />
+          <FileInput
+            label="Tokenizer vocab"
+            accept=".vocab"
+            value={loadDraft.vocabFile}
+            onChange={(file) => setLoadDraft((current) => ({ ...current, vocabFile: file }))}
+            clearable
+          />
 
-            {workspaceNotice?.tone === "error" ? (
-              <div className="feedback feedback--error">
-                <strong>Could not save model</strong>
-                <p>{workspaceNotice.message}</p>
-              </div>
-            ) : null}
+          {workspaceNotice ? (
+            <Alert color="red" icon={<IconAlertCircle size={18} />}>{workspaceNotice}</Alert>
+          ) : null}
 
-            <p className="page-note">This saves the active model draft. Actual checkpoint and tokenizer files will be written by the next training run.</p>
+          <ArtifactStatusNotice lookup={loadArtifactLookup} blockingMessage={loadArtifactBlocker} />
 
-            <div className="modal-panel__actions">
-              <button className="button button--secondary" type="button" onClick={closeDialog}>Cancel</button>
-              <button className="button button--primary" type="button" onClick={() => void applyCreateModel()}>Save draft</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDialog(null)}>Cancel</Button>
+            <Button loading={isImportingModel} disabled={Boolean(loadArtifactBlocker)} onClick={() => void applyLoadedModel()}>
+              Load selected files
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
-      {workspaceLoadState === "ready" && dialog === "load" ? (
-        <div className="modal-backdrop" role="presentation" onClick={closeDialog}>
-          <div className="modal-panel panel" role="dialog" aria-modal="true" aria-label="Load model" onClick={(event) => event.stopPropagation()}>
-            <div className="section-heading section-heading--tight">
-              <div>
-                <span className="eyebrow">Model</span>
-                <h2>Load model</h2>
-              </div>
-            </div>
-
-            <div className="tool-editor__grid">
-              <label className="field field--wide">
-                <span>Artifacts root</span>
-                <input className="input" type="text" value={loadDraft.output_root_dir} onChange={(event) => setLoadDraft((current) => ({ ...current, output_root_dir: event.target.value }))} />
-              </label>
-
-              <label className="field field--wide">
-                <span>Artifact name</span>
-                <input className="input" type="text" value={loadDraft.artifact_name} onChange={(event) => setLoadDraft((current) => ({ ...current, artifact_name: event.target.value }))} />
-              </label>
-
-              <label className="field field--wide">
-                <span>Checkpoint file</span>
-                <input className="input" type="file" accept=".pt" onChange={(event) => setLoadDraft((current) => ({ ...current, checkpointFile: event.target.files?.[0] ?? null }))} />
-              </label>
-
-              <label className="field field--wide">
-                <span>Tokenizer file</span>
-                <input className="input" type="file" accept=".model" onChange={(event) => setLoadDraft((current) => ({ ...current, tokenizerFile: event.target.files?.[0] ?? null }))} />
-              </label>
-
-              <label className="field field--wide">
-                <span>Tokenizer vocab (optional)</span>
-                <input className="input" type="file" accept=".vocab" onChange={(event) => setLoadDraft((current) => ({ ...current, vocabFile: event.target.files?.[0] ?? null }))} />
-              </label>
-            </div>
-
-            {workspaceNotice?.tone === "error" ? (
-              <div className="feedback feedback--error">
-                <strong>Could not load model</strong>
-                <p>{workspaceNotice.message}</p>
-              </div>
-            ) : null}
-
-            <div className="modal-panel__actions">
-              <button className="button button--secondary" type="button" onClick={closeDialog}>Cancel</button>
-              <button className="button button--primary" type="button" disabled={isImportingModel} onClick={() => void applyLoadedModel()}>
-                {isImportingModel ? "Loading..." : "Load selected files"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <DirectoryPickerModal
+        opened={rootPickerTarget !== null}
+        initialPath={rootPickerTarget === "load" ? loadDraft.output_root_dir : createDraft.output_root_dir}
+        onClose={() => setRootPickerTarget(null)}
+        onSelect={applyPickedArtifactRoot}
+      />
     </>
   );
 }

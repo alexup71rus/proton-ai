@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Alert, Button, Card, Group, Loader, Modal, Stack, Text, Title } from "@mantine/core";
+import { IconAlertCircle, IconRefresh, IconTrash } from "@tabler/icons-react";
 
 import {
   fetchTools,
@@ -11,9 +13,12 @@ import { type EditorFeedback, ToolEditor } from "../components/ToolEditor";
 import { ToolList } from "../components/ToolList";
 
 
-function blankTool(nextIndex: number): ToolDefinition {
+type ValidationState = "unknown" | "valid" | "invalid";
+
+
+function blankTool(): ToolDefinition {
   return {
-    name: `tool_${nextIndex + 1}`,
+    name: "",
     description: "",
     tags: [],
     executor_path: "",
@@ -26,6 +31,46 @@ function blankTool(nextIndex: number): ToolDefinition {
 }
 
 
+function compactPath(path: string | undefined): string {
+  if (!path) {
+    return "data/tools/tools.json";
+  }
+  const marker = "/proton-x/";
+  const markerIndex = path.indexOf(marker);
+  if (markerIndex >= 0) {
+    return path.slice(markerIndex + marker.length);
+  }
+  return path;
+}
+
+
+function isValidToolName(name: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+}
+
+
+function hasBlockingToolIssue(tool: ToolDefinition): boolean {
+  const name = tool.name.trim();
+  return !name || !isValidToolName(name) || !tool.executor_path.trim();
+}
+
+
+function getDuplicateToolName(tools: ToolDefinition[]): string | null {
+  const seen = new Set<string>();
+  for (const tool of tools) {
+    const name = tool.name.trim();
+    if (!name) {
+      continue;
+    }
+    if (seen.has(name)) {
+      return name;
+    }
+    seen.add(name);
+  }
+  return null;
+}
+
+
 export function ToolsRoute() {
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [source, setSource] = useState<ToolsSource | null>(null);
@@ -35,7 +80,10 @@ export function ToolsRoute() {
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<EditorFeedback | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [validationState, setValidationState] = useState<ValidationState>("valid");
   const [actionState, setActionState] = useState<"idle" | "validating" | "saving">("idle");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editorVersion, setEditorVersion] = useState(0);
 
   async function loadRegistry() {
     setLoadState("loading");
@@ -45,7 +93,9 @@ export function ToolsRoute() {
       setTools(response.tools);
       setSource(response.source);
       setSelectedIndex(0);
+      setEditorVersion((version) => version + 1);
       setDirty(false);
+      setValidationState("valid");
       setFeedback(null);
       setSchemaError(null);
       setLoadState("ready");
@@ -60,24 +110,42 @@ export function ToolsRoute() {
   }, []);
 
   const selectedTool = tools[selectedIndex] ?? null;
+  const registryBlockingMessage = (() => {
+    const duplicateName = getDuplicateToolName(tools);
+    if (duplicateName) {
+      return `Duplicate tool name: ${duplicateName}.`;
+    }
+
+    const otherIssueCount = tools.filter((tool, index) => index !== selectedIndex && hasBlockingToolIssue(tool)).length;
+    if (otherIssueCount > 0) {
+      return otherIssueCount === 1
+        ? "Another tool in the list still needs a valid name and executor."
+        : `${otherIssueCount} other tools still need a valid name and executor.`;
+    }
+
+    return null;
+  })();
 
   function updateSelectedTool(nextTool: ToolDefinition) {
     setTools((currentTools) =>
       currentTools.map((tool, index) => (index === selectedIndex ? nextTool : tool)),
     );
     setDirty(true);
+    setValidationState("unknown");
     setFeedback(null);
   }
 
   function handleAddTool() {
     const nextIndex = tools.length;
-    setTools((currentTools) => [...currentTools, blankTool(currentTools.length)]);
+    setTools((currentTools) => [...currentTools, blankTool()]);
     setSelectedIndex(nextIndex);
+    setEditorVersion((version) => version + 1);
     setDirty(true);
+    setValidationState("unknown");
     setFeedback({
       tone: "info",
-      title: "New tool ready",
-      body: "Give it a name, shape the schema, then validate before saving.",
+      title: "Draft tool",
+      body: "Fill name, executor, routing tags and attributes, then validate and save.",
     });
     setSchemaError(null);
   }
@@ -87,12 +155,14 @@ export function ToolsRoute() {
     setFeedback(null);
     try {
       const response = await validateTools(tools);
+      setValidationState("valid");
       setFeedback({
         tone: "success",
-        title: "Registry looks valid",
-        body: `${response.tool_count} tools passed the current service validation rules.`,
+        title: "Registry is valid",
+        body: `${response.tool_count} tools passed validation.`,
       });
     } catch (error) {
+      setValidationState("invalid");
       setFeedback({
         tone: "error",
         title: "Validation failed",
@@ -104,6 +174,15 @@ export function ToolsRoute() {
   }
 
   async function handleSave() {
+    if (validationState !== "valid") {
+      setFeedback({
+        tone: "error",
+        title: "Validate before saving",
+        body: "Run registry validation from Advanced after your latest changes.",
+      });
+      return;
+    }
+
     setActionState("saving");
     setFeedback(null);
     try {
@@ -111,10 +190,11 @@ export function ToolsRoute() {
       setTools(response.tools);
       setSource(response.source);
       setDirty(false);
+      setValidationState("valid");
       setFeedback({
         tone: "success",
         title: "Registry saved",
-        body: `Source of truth updated in ${response.source.name}.`,
+        body: `Updated ${response.source.name}.`,
       });
     } catch (error) {
       setFeedback({
@@ -127,96 +207,125 @@ export function ToolsRoute() {
     }
   }
 
+  function handleSelectTool(index: number) {
+    setSelectedIndex(index);
+    setSchemaError(null);
+  }
+
+  function handleDeleteSelectedTool() {
+    if (!selectedTool) {
+      return;
+    }
+
+    const deletedName = selectedTool.name.trim() || "Untitled draft";
+    const nextTools = tools.filter((_, index) => index !== selectedIndex);
+    const nextIndex = Math.max(0, Math.min(selectedIndex, nextTools.length - 1));
+
+    setTools(nextTools);
+    setSelectedIndex(nextIndex);
+    setEditorVersion((version) => version + 1);
+    setSchemaError(null);
+    setValidationState("unknown");
+    setDirty(true);
+    setDeleteModalOpen(false);
+    setFeedback({
+      tone: "info",
+      title: "Tool removed",
+      body: `${deletedName} was removed from the draft registry. Save to persist the change.`,
+    });
+  }
+
   if (loadState === "loading") {
     return (
-      <section className="page">
-        <header className="page-header">
-          <div>
-            <h1>Tools</h1>
-            <p>Load the registry and prepare a clean source of truth for the router.</p>
-          </div>
-        </header>
-        <div className="panel panel--soft empty-state">
-          <h2>Loading tools registry</h2>
-          <p>Fetching the current file-backed registry from the new UI backend.</p>
-        </div>
-      </section>
+      <Card>
+        <Group>
+          <Loader size="sm" />
+          <Text>Loading tools registry...</Text>
+        </Group>
+      </Card>
     );
   }
 
   if (loadState === "error") {
     return (
-      <section className="page">
-        <header className="page-header">
-          <div>
-            <h1>Tools</h1>
-            <p>Load the registry and prepare a clean source of truth for the router.</p>
-          </div>
-        </header>
-        <div className="panel empty-state empty-state--error">
-          <h2>Could not load the registry</h2>
-          <p>{loadError}</p>
-          <button className="button button--primary" type="button" onClick={() => void loadRegistry()}>
-            Retry
-          </button>
-        </div>
-      </section>
+      <Stack>
+        <Alert color="red" title="Could not load registry" icon={<IconAlertCircle size={18} />}>
+          {loadError}
+        </Alert>
+        <Button leftSection={<IconRefresh size={16} />} onClick={() => void loadRegistry()}>
+          Retry
+        </Button>
+      </Stack>
     );
   }
 
   return (
-    <section className="page">
-      <header className="page-header">
-        <div>
-          <h1>Tools</h1>
-          <p>
-            Edit the registry as a real source of truth, validate it in place, and keep the file readable.
-          </p>
-        </div>
-        <div className="page-header__meta">
-          <span className="pill">{tools.length} tools</span>
-          <span className={`pill${dirty ? " pill--warning" : " pill--soft"}`}>
-            {dirty ? "Unsaved changes" : "Registry synced"}
-          </span>
-        </div>
-      </header>
+    <Stack gap="lg">
+      <Modal
+        opened={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Delete tool?"
+        centered
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            This removes {selectedTool?.name.trim() || "the draft tool"} from the registry draft. Save the registry afterwards to write it to disk.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
+            <Button color="red" leftSection={<IconTrash size={16} />} onClick={handleDeleteSelectedTool}>
+              Delete tool
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
-      <div className="tools-layout">
+      <Group justify="space-between" align="flex-end">
+        <div>
+          <Title order={2}>Tools registry</Title>
+          <Text c="dimmed" size="sm">{compactPath(source?.path)}</Text>
+        </div>
+      </Group>
+
+      <div className="route-grid route-grid--tools">
         <ToolList
           tools={tools}
           selectedIndex={selectedIndex}
           dirty={dirty}
           onAdd={handleAddTool}
-          onSelect={setSelectedIndex}
+          onSelect={handleSelectTool}
         />
 
         {selectedTool ? (
           <ToolEditor
-            key={selectedIndex}
+            key={`${selectedIndex}-${editorVersion}`}
             tool={selectedTool}
             source={source}
             dirty={dirty}
             actionState={actionState}
             feedback={feedback}
+            validationState={validationState}
+            registryBlockingMessage={registryBlockingMessage}
             onChange={updateSelectedTool}
+            onDelete={() => setDeleteModalOpen(true)}
             onSchemaValidityChange={setSchemaError}
             onValidate={() => void handleValidate()}
             onSave={() => void handleSave()}
           />
         ) : (
-          <section className="panel empty-state">
-            <h2>Start the registry</h2>
-            <p>Add the first tool to shape the contract the model will learn from.</p>
-            <button className="button button--primary" onClick={handleAddTool} type="button">
-              Add first tool
-            </button>
-          </section>
+          <Card>
+            <Stack align="flex-start">
+              <Title order={3}>No tools</Title>
+              <Text c="dimmed">Start the registry with one tool.</Text>
+              <Button onClick={handleAddTool}>Add first tool</Button>
+            </Stack>
+          </Card>
         )}
       </div>
 
       {schemaError ? (
-        <p className="page-note">Fix the argument schema before validating or saving the registry.</p>
+        <Alert color="red" icon={<IconAlertCircle size={18} />}>{schemaError}</Alert>
       ) : null}
-    </section>
+    </Stack>
   );
 }

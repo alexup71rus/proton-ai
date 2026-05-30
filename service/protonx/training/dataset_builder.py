@@ -5,6 +5,8 @@ from typing import Any
 
 from protonx.contracts import build_fallback_payload
 from protonx.contracts import with_compact_fallback_tool
+from protonx.enum_values import enum_first_output_value
+from protonx.enum_values import enum_output_values
 from protonx.model_contract import compact_tool_from_definition
 from protonx.model_contract import compact_tool_from_record
 from protonx.schemas import ToolDefinition
@@ -14,27 +16,14 @@ from protonx.schemas import JsonSchema
 DEFAULT_MIXER_SEED_PATH = Path(__file__).with_name("bootstrap_dataset_mixer_for_tools.json")
 
 
-def _enum_output_value(raw_value: Any) -> str:
-    value = str(raw_value)
-    enum_value, separator, _description = value.partition(":")
-    if separator and enum_value.strip():
-        return enum_value.strip()
-    return value
-
-
-def _enum_output_values(enum_values: Any) -> set[str]:
-    if not isinstance(enum_values, list):
-        return set()
-    return {_enum_output_value(value) for value in enum_values}
-
-
 def _default_arguments(tool: ToolDefinition) -> dict:
     arguments: dict[str, str] = {}
     for field_name in tool.arguments_schema.required:
         property_schema = tool.arguments_schema.properties.get(field_name, {})
         enum_values = property_schema.get("enum")
-        if enum_values:
-            arguments[field_name] = _enum_output_value(enum_values[0])
+        first_enum_value = enum_first_output_value(enum_values)
+        if first_enum_value is not None:
+            arguments[field_name] = first_enum_value
             continue
         arguments[field_name] = field_name.replace("_", " ")
     return arguments
@@ -816,7 +805,7 @@ def _arguments_match_schema(tool: ToolDefinition, arguments: dict[str, str]) -> 
     for field_name, value in arguments.items():
         property_schema = tool.arguments_schema.properties.get(field_name, {})
         enum_values = property_schema.get("enum")
-        if enum_values is not None and value not in _enum_output_values(enum_values):
+        if enum_values is not None and value not in enum_output_values(enum_values):
             return False
     return True
 

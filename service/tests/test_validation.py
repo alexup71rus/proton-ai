@@ -96,3 +96,33 @@ def test_validator_rejects_argument_outside_enum():
     )
     assert result.valid is False
     assert result.error == "schema validation failed"
+
+
+def test_validator_accepts_value_description_enum_object():
+    tools = [
+        ToolDefinition(
+            name="list_directory",
+            description="Directory listing",
+            tags=["files"],
+            arguments_schema=JsonSchema(
+                type="object",
+                properties={
+                    "directory": {
+                        "type": "string",
+                        "enum": {
+                            "downloads": "папка загрузок",
+                            "project_root": "корень проекта",
+                        },
+                    }
+                },
+                required=["directory"],
+            ),
+        )
+    ]
+
+    result = validate_model_output(
+        available_tools=tools,
+        raw_output='{"tool_calls":[{"name":"list_directory","arguments":{"directory":"downloads"}}]}',
+    )
+
+    assert result.valid is True

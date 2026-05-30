@@ -7,12 +7,43 @@ from typing import Any
 from protonx.config import DATA_DIR
 
 
+MAX_PUBLIC_LOSS_HISTORY_POINTS = 1000
+
+
 def _field_default_value(state_field) -> Any:
     if state_field.default_factory is not MISSING:
         return state_field.default_factory()
     if state_field.default is not MISSING:
         return state_field.default
     raise ValueError(f"TrainingState field has no default: {state_field.name}")
+
+
+def downsample_loss_history(values: list[float], max_points: int = MAX_PUBLIC_LOSS_HISTORY_POINTS) -> list[float]:
+    if max_points <= 0 or len(values) <= max_points:
+        return list(values)
+
+    bin_size = len(values) / max_points
+    sampled: list[float] = []
+    for index in range(max_points):
+        start = int(index * bin_size)
+        end = int((index + 1) * bin_size)
+        if index == max_points - 1:
+            end = len(values)
+        end = max(end, start + 1)
+        window = values[start:end]
+        sampled.append(sum(window) / len(window))
+    return sampled
+
+
+def public_training_state_payload(state: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(state)
+    raw_history = payload.get("loss_history")
+    if not isinstance(raw_history, list):
+        raw_history = []
+    loss_history = [float(value) for value in raw_history if isinstance(value, (int, float))]
+    payload["loss_history_total"] = len(loss_history)
+    payload["loss_history"] = downsample_loss_history(loss_history)
+    return payload
 
 
 @dataclass

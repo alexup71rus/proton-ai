@@ -4,7 +4,7 @@ export type JsonSchemaStringType = "string";
 export interface JsonSchemaStringArgument {
   type: JsonSchemaStringType;
   description?: string;
-  enum?: string[];
+  enum?: string[] | Record<string, string>;
   [key: string]: unknown;
 }
 
@@ -139,6 +139,7 @@ export interface WorkspaceTrainingSettings {
   dataset_name: string;
   epochs: number;
   batch_size: number;
+  learning_rate: number;
 }
 
 
@@ -160,6 +161,19 @@ export interface WorkspaceSettingsResponse extends WorkspaceSettingsPayload {
 }
 
 
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+}
+
+
+export interface DirectoryListingResponse {
+  path: string;
+  parent_path: string | null;
+  entries: DirectoryEntry[];
+}
+
+
 export interface TrainingStatus {
   status: string;
   current_epoch: number;
@@ -168,6 +182,7 @@ export interface TrainingStatus {
   total_steps: number;
   loss: number | null;
   loss_history: number[];
+  loss_history_total: number;
   metrics: Record<string, number>;
   error: string | null;
   batch_size: number;
@@ -195,6 +210,7 @@ export interface TrainingStartPayload {
   dataset_name: string;
   epochs: number;
   batch_size: number;
+  learning_rate: number;
   model_name: string;
   tokenizer_name: string;
   output_root_dir: string;
@@ -220,6 +236,19 @@ export interface ModelImportResponse {
   artifact_name: string;
   model_path: string;
   tokenizer_path: string;
+}
+
+
+export interface ModelArtifactStatusResponse {
+  output_root_dir: string;
+  artifact_name: string;
+  model_path: string;
+  tokenizer_path: string;
+  vocab_path: string;
+  model_exists: boolean;
+  tokenizer_exists: boolean;
+  vocab_exists: boolean;
+  exists: boolean;
 }
 
 
@@ -267,6 +296,7 @@ export interface TestResponse {
 
 
 export interface LogRow {
+  created_at: string | null;
   user: string;
   candidates: string[];
   raw_output_summary: string;
@@ -278,6 +308,12 @@ export interface LogRow {
 
 export interface LogsResponse {
   rows: LogRow[];
+}
+
+
+export interface LogsClearResponse {
+  cleared: boolean;
+  rows_deleted: number;
 }
 
 const inflightGetRequests = new Map<string, Promise<unknown>>();
@@ -322,6 +358,29 @@ async function executeRequest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 
+async function getResponseErrorMessage(response: Response, fallback: string): Promise<string> {
+  const text = await response.text();
+  if (!text) {
+    return fallback;
+  }
+  try {
+    const payload = JSON.parse(text);
+    if (typeof payload?.detail === "string") {
+      return payload.detail;
+    }
+    if (Array.isArray(payload?.detail)) {
+      return payload.detail.join("\n");
+    }
+    if (typeof payload?.message === "string") {
+      return payload.message;
+    }
+  } catch {
+    return text;
+  }
+  return text;
+}
+
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (isDedupableGet(path, init)) {
     const cached = inflightGetRequests.get(path);
@@ -357,6 +416,20 @@ export async function saveWorkspaceSettings(payload: WorkspaceSettingsPayload): 
 }
 
 
+export async function fetchDirectories(path: string): Promise<DirectoryListingResponse> {
+  return request<DirectoryListingResponse>(`/api/filesystem/directories?path=${encodeURIComponent(path)}`);
+}
+
+
+export async function fetchModelArtifactStatus(outputRootDir: string, artifactName: string): Promise<ModelArtifactStatusResponse> {
+  const params = new URLSearchParams({
+    output_root_dir: outputRootDir,
+    artifact_name: artifactName,
+  });
+  return request<ModelArtifactStatusResponse>(`/api/models/artifact-status?${params.toString()}`);
+}
+
+
 export async function saveTools(tools: ToolDefinition[]): Promise<ToolsResponse & { saved: boolean }> {
   return request<ToolsResponse & { saved: boolean }>("/api/tools", {
     method: "PUT",
@@ -388,8 +461,7 @@ export async function importDataset(file: File): Promise<{ imported: boolean; da
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Dataset import failed.");
+    throw new Error(await getResponseErrorMessage(response, "Dataset import failed."));
   }
 
   return response.json() as Promise<{ imported: boolean; dataset: DatasetSummary }>;
@@ -494,8 +566,7 @@ export async function importModelArtifacts(params: {
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Model import failed.");
+    throw new Error(await getResponseErrorMessage(response, "Model import failed."));
   }
 
   return response.json() as Promise<ModelImportResponse>;
@@ -504,6 +575,13 @@ export async function importModelArtifacts(params: {
 
 export async function fetchLogs(): Promise<LogsResponse> {
   return request<LogsResponse>("/api/logs");
+}
+
+
+export async function clearLogs(): Promise<LogsClearResponse> {
+  return request<LogsClearResponse>("/api/logs", {
+    method: "DELETE",
+  });
 }
 
 

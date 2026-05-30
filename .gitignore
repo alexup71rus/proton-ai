@@ -47,7 +47,7 @@ Thumbs.db
 *.log
 logs/
 
-# Docs (local planning)
+# Docs (local planning / agent scratch space)
 docs/
 
 # Environment

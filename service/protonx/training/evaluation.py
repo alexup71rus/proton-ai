@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from protonx.contracts import FALLBACK_TOOL_NAME
+from protonx.enum_values import enum_first_output_value
+from protonx.enum_values import enum_output_values
 from protonx.routing.model_runtime import ModelRuntime
 from protonx.training.format import serialize_assistant_payload
 
@@ -227,31 +229,20 @@ def _tool_args(tool: dict[str, Any]) -> dict[str, Any]:
     return args if isinstance(args, dict) else {}
 
 
-def _enum_output_value(raw_value: Any) -> str:
-    value = str(raw_value)
-    enum_value, separator, _description = value.partition(":")
-    if separator and enum_value.strip():
-        return enum_value.strip()
-    return value
-
-
-def _enum_output_values(enum_values: Any) -> set[str]:
-    if not isinstance(enum_values, list):
-        return set()
-    return {_enum_output_value(value) for value in enum_values}
-
-
 def _default_arguments(tool: dict[str, Any]) -> dict[str, str]:
     arguments: dict[str, str] = {}
     for field_name, spec in _tool_args(tool).items():
         if isinstance(spec, dict):
             enum_values = spec.get("enum")
-            if isinstance(enum_values, list) and enum_values:
-                arguments[field_name] = _enum_output_value(enum_values[0])
+            first_enum_value = enum_first_output_value(enum_values)
+            if first_enum_value is not None:
+                arguments[field_name] = first_enum_value
                 continue
             spec = spec.get("type") or "string"
         if isinstance(spec, list) and spec:
-            arguments[field_name] = _enum_output_value(spec[0])
+            first_enum_value = enum_first_output_value(spec)
+            if first_enum_value is not None:
+                arguments[field_name] = first_enum_value
             continue
         arguments[field_name] = field_name.replace("_", " ")
     return arguments
@@ -268,13 +259,13 @@ def _schema_ok(arguments: dict[str, Any], tool: dict[str, Any]) -> bool:
         spec = specs.get(key)
         if isinstance(spec, dict):
             enum_values = spec.get("enum")
-            if isinstance(enum_values, list):
-                if value not in _enum_output_values(enum_values):
+            if enum_values is not None:
+                if value not in enum_output_values(enum_values):
                     return False
                 continue
             spec = spec.get("type") or "string"
         if isinstance(spec, list):
-            if value not in _enum_output_values(spec):
+            if value not in enum_output_values(spec):
                 return False
             continue
         if spec == "string" and not isinstance(value, str):

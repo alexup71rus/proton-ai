@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def _default_schema() -> dict[str, Any]:
@@ -19,6 +19,23 @@ def _coalesce_training_status_value(value: Any, fallback: Any) -> Any:
     if isinstance(fallback, int):
         return fallback if value is None else value
     return value or fallback
+
+
+def _downsample_loss_history(values: list[float], max_points: int = 1000) -> list[float]:
+    if max_points <= 0 or len(values) <= max_points:
+        return list(values)
+
+    bin_size = len(values) / max_points
+    sampled: list[float] = []
+    for index in range(max_points):
+        start = int(index * bin_size)
+        end = int((index + 1) * bin_size)
+        if index == max_points - 1:
+            end = len(values)
+        end = max(end, start + 1)
+        window = values[start:end]
+        sampled.append(sum(window) / len(window))
+    return sampled
 
 
 class ToolDefinition(BaseModel):
@@ -135,7 +152,14 @@ class LogsExportResponse(BaseModel):
     dataset: DatasetSummary
 
 
+class LogsClearResponse(BaseModel):
+    cleared: bool = True
+    rows_deleted: int = 0
+
+
 class WorkspaceModelSettings(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     mode: Literal["new", "loaded"] = "new"
     label: str = "tiny_router_v1"
     model_name: str = "tiny-router"
@@ -171,7 +195,34 @@ class WorkspaceSettingsResponse(WorkspaceSettingsPayload):
     storage_path: str
 
 
+class DirectoryEntry(BaseModel):
+    name: str
+    path: str
+
+
+class DirectoryListingResponse(BaseModel):
+    path: str
+    parent_path: str | None = None
+    entries: list[DirectoryEntry] = Field(default_factory=list)
+
+
+class ModelArtifactStatusResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    output_root_dir: str
+    artifact_name: str
+    model_path: str
+    tokenizer_path: str
+    vocab_path: str
+    model_exists: bool = False
+    tokenizer_exists: bool = False
+    vocab_exists: bool = False
+    exists: bool = False
+
+
 class TrainingStartPayload(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     dataset_name: str | None = None
     epochs: int | None = None
     batch_size: int | None = None
@@ -188,6 +239,8 @@ class TrainingStartPayload(BaseModel):
 
 
 class TrainingStatusResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     status: str = "idle"
     current_epoch: int = 0
     total_epochs: int = 0
@@ -195,6 +248,7 @@ class TrainingStatusResponse(BaseModel):
     total_steps: int = 0
     loss: float | None = None
     loss_history: list[float] = Field(default_factory=list)
+    loss_history_total: int = 0
     metrics: dict[str, float] = Field(default_factory=dict)
     error: str | None = None
     batch_size: int = 1
@@ -224,16 +278,25 @@ class TrainingStatusResponse(BaseModel):
             field_name: _coalesce_training_status_value(raw.get(field_name), fallback)
             for field_name, fallback in defaults.items()
         }
+        raw_history = normalized.get("loss_history")
+        if isinstance(raw_history, list):
+            loss_history = [float(value) for value in raw_history if isinstance(value, (int, float))]
+            normalized["loss_history_total"] = int(raw.get("loss_history_total") or len(loss_history))
+            normalized["loss_history"] = _downsample_loss_history(loss_history)
         return cls.model_validate(normalized)
 
 
 class TestPayload(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     user_text: str
     model_path: str | None = None
     tokenizer_path: str | None = None
 
 
 class ModelImportResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     imported: bool = True
     output_root_dir: str
     artifact_name: str
@@ -272,6 +335,7 @@ class TestResponse(BaseModel):
 
 
 class LogRow(BaseModel):
+    created_at: str | None = None
     user: str
     candidates: list[str] = Field(default_factory=list)
     raw_output_summary: str

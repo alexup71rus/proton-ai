@@ -24,14 +24,14 @@ def _list_directory_schema() -> dict[str, Any]:
             "directory": {
                 "type": "string",
                 "description": "Какую разрешённую директорию показать.",
-                "enum": [
-                    "downloads: папка загрузок текущего пользователя",
-                    "project_root: корень текущего проекта Proton-X",
-                    "service: FastAPI сервис модели в папке service",
-                    "web_backend: FastAPI backend для UI",
-                    "web_ui: React/Vite интерфейс оператора",
-                    "data: локальные данные, датасеты и артефакты проекта",
-                ],
+                "enum": {
+                    "downloads": "папка загрузок текущего пользователя",
+                    "project_root": "корень текущего проекта Proton-X",
+                    "service": "FastAPI сервис модели в папке service",
+                    "web_backend": "FastAPI backend для UI",
+                    "web_ui": "React/Vite интерфейс оператора",
+                    "data": "локальные данные, датасеты и артефакты проекта",
+                },
             }
         },
         "required": ["directory"],
@@ -45,10 +45,10 @@ def _node_version_schema() -> dict[str, Any]:
             "target": {
                 "type": "string",
                 "description": "Версию какого инструмента показать.",
-                "enum": [
-                    "node: версия Node.js через node --version",
-                    "npm: версия npm через npm --version",
-                ],
+                "enum": {
+                    "node": "версия Node.js через node --version",
+                    "npm": "версия npm через npm --version",
+                },
             }
         },
         "required": ["target"],
@@ -62,10 +62,10 @@ def _docker_list_schema() -> dict[str, Any]:
             "state": {
                 "type": "string",
                 "description": "Показать только запущенные или все контейнеры.",
-                "enum": [
-                    "running: только запущенные контейнеры, docker ps",
-                    "all: все контейнеры включая остановленные, docker ps --all",
-                ],
+                "enum": {
+                    "running": "только запущенные контейнеры, docker ps",
+                    "all": "все контейнеры включая остановленные, docker ps --all",
+                },
             }
         },
         "required": ["state"],
@@ -79,12 +79,12 @@ def _http_head_schema() -> dict[str, Any]:
             "target": {
                 "type": "string",
                 "description": "Какой разрешённый endpoint проверить.",
-                "enum": [
-                    "example_com: https://example.com для базовой проверки интернета",
-                    "pypi: https://pypi.org для проверки Python package index",
-                    "npm_registry: https://registry.npmjs.org для проверки npm registry",
-                    "github: https://github.com для проверки доступности GitHub",
-                ],
+                "enum": {
+                    "example_com": "https://example.com для базовой проверки интернета",
+                    "pypi": "https://pypi.org для проверки Python package index",
+                    "npm_registry": "https://registry.npmjs.org для проверки npm registry",
+                    "github": "https://github.com для проверки доступности GitHub",
+                },
             }
         },
         "required": ["target"],

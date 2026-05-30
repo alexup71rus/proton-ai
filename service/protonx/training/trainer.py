@@ -23,6 +23,7 @@ from protonx.training.format import serialize_training_record
 from protonx.training.common import normalize_artifact_name
 from protonx.training.model import TinyRouterConfig, TinyRouterModel
 from protonx.training.state import TRAINING_STATE
+from protonx.training.state import public_training_state_payload
 from protonx.training.state import read_training_state
 from protonx.training.state import training_state_path
 from protonx.training.state import write_training_state
@@ -265,7 +266,7 @@ def get_training_status() -> dict:
         state["error"] = state.get("error") or "Training process is not running"
         TRAINING_STATE.update(**state)
         write_training_state()
-    return state
+    return public_training_state_payload(state)
 
 
 def _finite_loss_value(loss: torch.Tensor) -> float:
@@ -611,4 +612,4 @@ def start_training_job(
     log_file.close()
     TRAINING_STATE.update(process_id=process.pid)
     _persist_training_state(force=True)
-    return TRAINING_STATE.to_dict()
+    return public_training_state_payload(TRAINING_STATE.to_dict())

@@ -20,6 +20,22 @@ def test_get_logs_returns_human_friendly_rows(tmp_path: Path, monkeypatch, clien
     assert payload["rows"][0]["error"] == "unknown tool"
 
 
+def test_delete_logs_clears_router_log_file(tmp_path: Path, monkeypatch, client) -> None:
+    log_path = tmp_path / "router.jsonl"
+    log_path.write_text(
+        '{"user_text":"make it quieter","available_tools":["speaker"],"model_output":"{}","final_action":"fallback"}\n'
+        '{"user_text":"show downloads","available_tools":["files"],"model_output":"{}","final_action":"fallback"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROTONX_ROUTER_LOG_FILE", str(log_path))
+
+    response = client.delete("/api/logs")
+
+    assert response.status_code == 200
+    assert response.json() == {"cleared": True, "rows_deleted": 2}
+    assert log_path.read_text(encoding="utf-8") == ""
+
+
 def test_post_logs_export_failed_cases_creates_dataset(tmp_path: Path, monkeypatch, client) -> None:
     log_path = tmp_path / "router.jsonl"
     log_path.write_text(

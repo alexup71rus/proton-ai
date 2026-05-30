@@ -20,5 +20,6 @@ def test_tiny_router_model_returns_logits_with_vocab_dimension():
 def test_build_causal_mask_blocks_future_positions():
     mask = build_causal_mask(seq_len=4, device=torch.device("cpu"))
     assert mask.shape == (4, 4)
-    assert torch.isinf(mask[0, 3])
-    assert mask[3, 0] == 0
+    assert mask.dtype == torch.bool
+    assert mask[0, 3].item() is True
+    assert mask[3, 0].item() is False

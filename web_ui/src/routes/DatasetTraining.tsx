@@ -1,4 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Group,
+  NumberInput,
+  Select,
+  SimpleGrid,
+  Stack,
+  Text,
+  Title,
+} from "@mantine/core";
+import { IconAlertCircle, IconDownload, IconRefresh, IconRosetteDiscountCheck } from "@tabler/icons-react";
 
 import {
   fetchDatasets,
@@ -15,7 +29,7 @@ import { TrainingProgress } from "../components/TrainingProgress";
 
 
 type Notice = {
-  tone: "success" | "error" | "info";
+  tone: "green" | "red" | "blue";
   title: string;
   body?: string;
 };
@@ -28,17 +42,8 @@ type DatasetTrainingRouteProps = {
   onModelResolved: (status: TrainingStatus) => void;
 };
 
+
 const TRAINING_STATUS_POLL_MS = 1200 * 2;
-
-
-type DatasetTrainingSummary = {
-  hasDatasets: boolean;
-  isRunning: boolean;
-  datasetFileLabel: string;
-  datasetRows: number;
-  datasetSha: string;
-  canStartTraining: boolean;
-};
 
 
 function formatDatasetSource(source: DatasetSummary["source"]): string {
@@ -55,62 +60,23 @@ function formatDatasetSource(source: DatasetSummary["source"]): string {
 }
 
 
-function formatModelMode(mode: WorkspaceModel["mode"]): string {
-  return mode === "loaded" ? "loaded files" : "draft";
-}
-
-
-function formatDatasetFile(status: TrainingStatus | null, fallbackName: string): string {
-  if (status?.dataset_path) {
-    return status.dataset_path.split("/").pop() || fallbackName;
-  }
-  return fallbackName;
-}
-
-
 function formatSha(sha: string | null | undefined): string {
-  if (!sha) {
-    return "pending";
-  }
-  return sha.slice(0, 12);
+  return sha ? sha.slice(0, 12) : "pending";
 }
 
 
-function buildDatasetTrainingSummary(
-  datasets: DatasetSummary[],
-  selectedDataset: string,
-  selectedDatasetDetails: DatasetSummary | null,
-  selectedModel: WorkspaceModel,
-  status: TrainingStatus | null,
-  isStarting: boolean,
-): DatasetTrainingSummary {
-  const hasDatasets = datasets.length > 0;
-  const isRunning = status?.status === "running";
-  const datasetFileLabel = selectedDataset ? formatDatasetFile(status, selectedDataset) : "-";
-  const datasetRows = status?.dataset_path && status.dataset_row_count > 0
-    ? status.dataset_row_count
-    : selectedDatasetDetails?.row_count ?? 0;
-  const datasetSha = selectedDatasetDetails?.sha1
-    ? formatSha(selectedDatasetDetails.sha1)
-    : status?.dataset_path && datasetFileLabel === selectedDataset
-      ? formatSha(status.dataset_sha1)
-      : "pending";
-  const canStartTraining = Boolean(
-    selectedDataset.trim()
-    && selectedModel.output_root_dir.trim()
-    && selectedModel.artifact_name.trim()
-    && !isRunning
-    && !isStarting
-  );
+function compactPath(path: string): string {
+  const marker = "/proton-x/";
+  const markerIndex = path.indexOf(marker);
+  if (markerIndex >= 0) {
+    return path.slice(markerIndex + marker.length);
+  }
+  return path;
+}
 
-  return {
-    hasDatasets,
-    isRunning,
-    datasetFileLabel,
-    datasetRows,
-    datasetSha,
-    canStartTraining,
-  };
+
+function numberOrFallback(value: string | number, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 
@@ -120,268 +86,9 @@ function NoticeBanner({ notice }: { notice: Notice | null }) {
   }
 
   return (
-    <div className={`feedback feedback--${notice.tone}`}>
-      <strong>{notice.title}</strong>
-      {notice.body ? <p>{notice.body}</p> : null}
-    </div>
-  );
-}
-
-
-type DatasetTrainingHeaderProps = {
-  description: string;
-  datasetCount?: number;
-};
-
-
-function DatasetTrainingHeader({ description, datasetCount }: DatasetTrainingHeaderProps) {
-  return (
-    <header className="page-header">
-      <div>
-        <h1>Dataset + Training</h1>
-        <p>{description}</p>
-      </div>
-      {datasetCount == null ? null : (
-        <div className="page-header__meta">
-          <span className="pill">{datasetCount} discovered files</span>
-        </div>
-      )}
-    </header>
-  );
-}
-
-
-function LoadingState() {
-  return (
-    <section className="page">
-      <DatasetTrainingHeader description="Load the dataset library and the current run state." />
-      <div className="panel panel--soft empty-state">
-        <h2>Loading workflow state</h2>
-        <p>Fetching available datasets and training progress from the backend.</p>
-      </div>
-    </section>
-  );
-}
-
-
-function ErrorState({ notice }: { notice: Notice | null }) {
-  return (
-    <section className="page">
-      <DatasetTrainingHeader description="Select a dataset and use the active model from the header for train or fine-tune." />
-      <NoticeBanner notice={notice} />
-    </section>
-  );
-}
-
-
-type DatasetPanelProps = {
-  datasets: DatasetSummary[];
-  selectedDataset: string;
-  selectedDatasetDetails: DatasetSummary | null;
-  summary: DatasetTrainingSummary;
-  onRefresh: () => void;
-  onDatasetChange: (datasetName: string) => void;
-  onValidate: () => void;
-};
-
-
-function DatasetPanel({
-  datasets,
-  selectedDataset,
-  selectedDatasetDetails,
-  summary,
-  onRefresh,
-  onDatasetChange,
-  onValidate,
-}: DatasetPanelProps) {
-  return (
-    <section className="panel dataset-panel">
-      <div className="section-heading">
-        <div>
-          <span className="eyebrow">Dataset</span>
-          <h2>Choose training file</h2>
-        </div>
-        <button className="button button--secondary" type="button" onClick={onRefresh}>
-          Refresh files
-        </button>
-      </div>
-
-      <div className="tool-editor__grid">
-        <label className="field field--wide">
-          <span>Dataset file</span>
-          <select
-            className="input"
-            value={selectedDataset}
-            disabled={summary.isRunning || !summary.hasDatasets}
-            onChange={(event) => onDatasetChange(event.target.value)}
-          >
-            {summary.hasDatasets ? null : <option value="">No datasets found</option>}
-            {datasets.map((dataset) => (
-              <option key={dataset.name} value={dataset.name}>
-                {dataset.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {selectedDatasetDetails ? (
-        <div className="dataset-summary panel panel--soft">
-          <div>
-            <span>File</span>
-            <strong>{summary.datasetFileLabel}</strong>
-          </div>
-          <div>
-            <span>Source</span>
-            <strong>{formatDatasetSource(selectedDatasetDetails.source)}</strong>
-          </div>
-          <div>
-            <span>Rows</span>
-            <strong>{summary.datasetRows}</strong>
-          </div>
-          <div>
-            <span>SHA1</span>
-            <strong>{summary.datasetSha}</strong>
-          </div>
-          <div>
-            <span>Validation</span>
-            <strong>{selectedDatasetDetails.validation_status}</strong>
-          </div>
-          <div>
-            <span>Issues</span>
-            <strong>{selectedDatasetDetails.issue_count}</strong>
-          </div>
-        </div>
-      ) : (
-        <p className="page-note">Refresh files if the dataset you expect is missing from the picker.</p>
-      )}
-
-      <div className="action-bar action-bar--static">
-        <div className="action-bar__status">
-          {selectedDataset ? (
-            <span className="pill">{selectedDataset}</span>
-          ) : (
-            <span className="pill pill--warning">Choose a dataset file</span>
-          )}
-        </div>
-        <div className="action-bar__actions">
-          <button className="button button--secondary" type="button" disabled={!selectedDataset.trim()} onClick={onValidate}>
-            Validate
-          </button>
-          {selectedDatasetDetails ? (
-            <a className="button button--secondary" href={getDatasetDownloadUrl(selectedDatasetDetails.name)}>
-              Export
-            </a>
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-
-type TrainingPanelProps = {
-  selectedModel: WorkspaceModel;
-  selectedDataset: string;
-  epochs: number;
-  batchSize: number;
-  isStarting: boolean;
-  summary: DatasetTrainingSummary;
-  onEpochsChange: (value: number) => void;
-  onBatchSizeChange: (value: number) => void;
-  onStartTraining: () => void;
-};
-
-
-function TrainingPanel({
-  selectedModel,
-  selectedDataset,
-  epochs,
-  batchSize,
-  isStarting,
-  summary,
-  onEpochsChange,
-  onBatchSizeChange,
-  onStartTraining,
-}: TrainingPanelProps) {
-  return (
-    <section className="panel training-panel">
-      <div className="section-heading">
-        <div>
-          <span className="eyebrow">Training</span>
-          <h2>{selectedModel.mode === "loaded" ? "Fine-tune selected model" : "Train selected model"}</h2>
-        </div>
-      </div>
-
-      <div className="dataset-summary panel panel--soft">
-        <div>
-          <span>Mode</span>
-          <strong>{formatModelMode(selectedModel.mode)}</strong>
-        </div>
-        <div>
-          <span>Save root</span>
-          <strong>{selectedModel.output_root_dir}</strong>
-        </div>
-        <div>
-          <span>Save as</span>
-          <strong>{selectedModel.artifact_name}</strong>
-        </div>
-        <div>
-          <span>Shape</span>
-          <strong>{selectedModel.hidden_dim} / {selectedModel.num_layers} / {selectedModel.num_heads}</strong>
-        </div>
-        <div>
-          <span>Checkpoint</span>
-          <strong>{selectedModel.model_path ? "ready" : "not saved yet"}</strong>
-        </div>
-      </div>
-
-      <div className="tool-editor__grid">
-        <label className="field">
-          <span>Epochs</span>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            value={epochs}
-            disabled={summary.isRunning}
-            onChange={(event) => onEpochsChange(Number(event.target.value) || 1)}
-          />
-        </label>
-
-        <label className="field">
-          <span>Batch size</span>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            value={batchSize}
-            disabled={summary.isRunning}
-            onChange={(event) => onBatchSizeChange(Number(event.target.value) || 1)}
-          />
-        </label>
-      </div>
-
-      <div className="action-bar action-bar--static">
-        <div className="action-bar__status">
-          {selectedDataset ? (
-            <span className="pill">{selectedDataset}</span>
-          ) : (
-            <span className="pill pill--warning">Choose a dataset first</span>
-          )}
-        </div>
-        <div className="action-bar__actions">
-          <button
-            className="button button--primary"
-            disabled={!summary.canStartTraining}
-            onClick={onStartTraining}
-            type="button"
-          >
-            {isStarting ? "Starting..." : summary.isRunning ? "Training in progress" : "Start training"}
-          </button>
-        </div>
-      </div>
-    </section>
+    <Alert color={notice.tone} title={notice.title} icon={notice.tone === "red" ? <IconAlertCircle size={18} /> : undefined}>
+      {notice.body}
+    </Alert>
   );
 }
 
@@ -400,16 +107,14 @@ export function DatasetTrainingRoute({
   const onModelResolvedRef = useRef(onModelResolved);
 
   const selectedDataset = trainingSettings.dataset_name;
-  const epochs = trainingSettings.epochs;
-  const batchSize = trainingSettings.batch_size;
   const selectedDatasetDetails = datasets.find((dataset) => dataset.name === selectedDataset) ?? null;
-  const summary = buildDatasetTrainingSummary(
-    datasets,
-    selectedDataset,
-    selectedDatasetDetails,
-    selectedModel,
-    status,
-    isStarting,
+  const isRunning = status?.status === "running";
+  const canStartTraining = Boolean(
+    selectedDataset.trim()
+    && selectedModel.output_root_dir.trim()
+    && selectedModel.artifact_name.trim()
+    && !isRunning
+    && !isStarting
   );
 
   async function persistTrainingSettings(next: WorkspaceTrainingSettings) {
@@ -417,8 +122,8 @@ export function DatasetTrainingRoute({
       await onTrainingSettingsChange(next);
     } catch (error) {
       setNotice({
-        tone: "error",
-        title: "Could not save workspace settings",
+        tone: "red",
+        title: "Workspace settings failed",
         body: error instanceof Error ? error.message : "Unknown error.",
       });
     }
@@ -445,8 +150,8 @@ export function DatasetTrainingRoute({
       }
     } catch (error) {
       setNotice({
-        tone: "error",
-        title: "Could not load dataset or training state",
+        tone: "red",
+        title: "Could not load training state",
         body: error instanceof Error ? error.message : "Unknown error.",
       });
       setLoadState("error");
@@ -514,28 +219,29 @@ export function DatasetTrainingRoute({
     }
   }
 
-
   async function handleValidateDataset(datasetName: string) {
+    if (!datasetName) {
+      return;
+    }
     setNotice(null);
     try {
       const report = await validateDataset(datasetName);
       await reloadDatasets(true);
       setNotice({
-        tone: report.status === "valid" ? "success" : "error",
-        title: report.status === "valid" ? "Dataset is valid" : "Dataset has validation issues",
+        tone: report.status === "valid" ? "green" : "red",
+        title: report.status === "valid" ? "Dataset is valid" : "Dataset has issues",
         body: report.status === "valid"
-          ? `${datasetName} passed validation with ${report.row_count} rows.`
-          : `${report.issue_count} issues found in ${datasetName}.`,
+          ? `${datasetName}: ${report.row_count} rows.`
+          : `${datasetName}: ${report.issue_count} issues.`,
       });
     } catch (error) {
       setNotice({
-        tone: "error",
+        tone: "red",
         title: "Validation failed",
         body: error instanceof Error ? error.message : "Unknown error.",
       });
     }
   }
-
 
   async function handleStartTraining() {
     if (!selectedDataset) {
@@ -547,8 +253,9 @@ export function DatasetTrainingRoute({
     try {
       const payload = await startTraining({
         dataset_name: selectedDataset,
-        epochs,
-        batch_size: batchSize,
+        epochs: trainingSettings.epochs,
+        batch_size: trainingSettings.batch_size,
+        learning_rate: trainingSettings.learning_rate,
         model_name: selectedModel.model_name,
         tokenizer_name: selectedModel.tokenizer_name,
         output_root_dir: selectedModel.output_root_dir,
@@ -564,13 +271,13 @@ export function DatasetTrainingRoute({
         onModelResolved(payload);
       }
       setNotice({
-        tone: "success",
+        tone: "green",
         title: "Training started",
-        body: `Run launched for ${selectedDataset}.`,
+        body: selectedDataset,
       });
     } catch (error) {
       setNotice({
-        tone: "error",
+        tone: "red",
         title: "Training could not start",
         body: error instanceof Error ? error.message : "Unknown error.",
       });
@@ -579,67 +286,168 @@ export function DatasetTrainingRoute({
     }
   }
 
-  function handleDatasetChange(datasetName: string) {
+  function patchTrainingSettings(patch: Partial<WorkspaceTrainingSettings>) {
     void persistTrainingSettings({
       ...trainingSettings,
-      dataset_name: datasetName,
-    });
-  }
-
-  function handleEpochsChange(value: number) {
-    void persistTrainingSettings({
-      ...trainingSettings,
-      epochs: value,
-    });
-  }
-
-  function handleBatchSizeChange(value: number) {
-    void persistTrainingSettings({
-      ...trainingSettings,
-      batch_size: value,
+      ...patch,
     });
   }
 
   if (loadState === "loading") {
-    return <LoadingState />;
+    return (
+      <Card>
+        <Text c="dimmed">Loading datasets and training state...</Text>
+      </Card>
+    );
   }
 
   if (loadState === "error") {
-    return <ErrorState notice={notice} />;
+    return (
+      <Stack>
+        <NoticeBanner notice={notice} />
+        <Button leftSection={<IconRefresh size={16} />} onClick={() => void loadScreen()}>
+          Retry
+        </Button>
+      </Stack>
+    );
   }
 
   return (
-    <section className="page">
-      <DatasetTrainingHeader description="Choose a dataset and start training." datasetCount={datasets.length} />
+    <Stack gap="lg">
+      <Group justify="space-between" align="flex-end">
+        <div>
+          <Title order={2}>Training</Title>
+          <Text c="dimmed" size="sm">{datasets.length} dataset files</Text>
+        </div>
+        <Badge color={isRunning ? "blue" : "gray"}>{isRunning ? "running" : "idle"}</Badge>
+      </Group>
+
       <NoticeBanner notice={notice} />
 
-      <div className="dataset-training-layout">
-        <div className="dataset-training-main">
-          <DatasetPanel
-            datasets={datasets}
-            selectedDataset={selectedDataset}
-            selectedDatasetDetails={selectedDatasetDetails}
-            summary={summary}
-            onRefresh={() => void reloadDatasets()}
-            onDatasetChange={handleDatasetChange}
-            onValidate={() => void handleValidateDataset(selectedDataset)}
-          />
+      <div className="route-grid route-grid--training">
+        <Stack>
+          <Card>
+            <Stack>
+              <Group justify="space-between">
+                <Title order={3}>Dataset</Title>
+                <Button variant="default" leftSection={<IconRefresh size={16} />} onClick={() => void reloadDatasets()}>
+                  Refresh
+                </Button>
+              </Group>
 
-          <TrainingPanel
-            selectedModel={selectedModel}
-            selectedDataset={selectedDataset}
-            epochs={epochs}
-            batchSize={batchSize}
-            isStarting={isStarting}
-            summary={summary}
-            onEpochsChange={handleEpochsChange}
-            onBatchSizeChange={handleBatchSizeChange}
-            onStartTraining={() => void handleStartTraining()}
-          />
-        </div>
+              <Select
+                label="Dataset file"
+                value={selectedDataset || null}
+                data={datasets.map((dataset) => ({ value: dataset.name, label: dataset.name }))}
+                disabled={isRunning || datasets.length === 0}
+                onChange={(value) => patchTrainingSettings({ dataset_name: value ?? "" })}
+              />
+
+              {selectedDatasetDetails ? (
+                <SimpleGrid cols={{ base: 2, md: 3 }}>
+                  <Card bg="dark.7">
+                    <Text size="xs" c="dimmed">Rows</Text>
+                    <Text fw={700}>{selectedDatasetDetails.row_count}</Text>
+                  </Card>
+                  <Card bg="dark.7">
+                    <Text size="xs" c="dimmed">Source</Text>
+                    <Text fw={700}>{formatDatasetSource(selectedDatasetDetails.source)}</Text>
+                  </Card>
+                  <Card bg="dark.7">
+                    <Text size="xs" c="dimmed">Validation</Text>
+                    <Text fw={700}>{selectedDatasetDetails.validation_status}</Text>
+                  </Card>
+                  <Card bg="dark.7">
+                    <Text size="xs" c="dimmed">Issues</Text>
+                    <Text fw={700}>{selectedDatasetDetails.issue_count}</Text>
+                  </Card>
+                  <Card bg="dark.7">
+                    <Text size="xs" c="dimmed">SHA1</Text>
+                    <Text fw={700}>{formatSha(selectedDatasetDetails.sha1)}</Text>
+                  </Card>
+                </SimpleGrid>
+              ) : (
+                <Text c="dimmed" size="sm">No dataset selected.</Text>
+              )}
+
+              <Group justify="flex-end">
+                <Button
+                  variant="default"
+                  leftSection={<IconRosetteDiscountCheck size={16} />}
+                  disabled={!selectedDataset}
+                  onClick={() => void handleValidateDataset(selectedDataset)}
+                >
+                  Validate
+                </Button>
+                {selectedDatasetDetails ? (
+                  <Button
+                    component="a"
+                    variant="default"
+                    href={getDatasetDownloadUrl(selectedDatasetDetails.name)}
+                    leftSection={<IconDownload size={16} />}
+                  >
+                    Download
+                  </Button>
+                ) : null}
+              </Group>
+            </Stack>
+          </Card>
+
+          <Card>
+            <Stack>
+              <Title order={3}>Training config</Title>
+              <SimpleGrid cols={{ base: 1, sm: 3 }}>
+                <NumberInput
+                  label="Epochs"
+                  min={1}
+                  value={trainingSettings.epochs}
+                  disabled={isRunning}
+                  onChange={(value) => patchTrainingSettings({ epochs: numberOrFallback(value, 1) })}
+                />
+                <NumberInput
+                  label="Batch size"
+                  min={1}
+                  value={trainingSettings.batch_size}
+                  disabled={isRunning}
+                  onChange={(value) => patchTrainingSettings({ batch_size: numberOrFallback(value, 1) })}
+                />
+                <NumberInput
+                  label="Learning rate"
+                  min={0}
+                  decimalScale={6}
+                  step={0.0001}
+                  value={trainingSettings.learning_rate}
+                  disabled={isRunning}
+                  onChange={(value) => patchTrainingSettings({ learning_rate: numberOrFallback(value, 0.001) })}
+                />
+              </SimpleGrid>
+
+              <SimpleGrid cols={{ base: 1, md: 3 }}>
+                <Card bg="dark.7">
+                  <Text size="xs" c="dimmed">Artifact</Text>
+                  <Text fw={700}>{selectedModel.artifact_name}</Text>
+                </Card>
+                <Card bg="dark.7">
+                  <Text size="xs" c="dimmed">Root</Text>
+                  <Text fw={700}>{compactPath(selectedModel.output_root_dir)}</Text>
+                </Card>
+                <Card bg="dark.7">
+                  <Text size="xs" c="dimmed">Shape</Text>
+                  <Text fw={700}>{selectedModel.hidden_dim}/{selectedModel.num_layers}/{selectedModel.num_heads}</Text>
+                </Card>
+              </SimpleGrid>
+
+              <Group justify="flex-end">
+                <Button disabled={!canStartTraining} loading={isStarting} onClick={() => void handleStartTraining()}>
+                  {isRunning ? "Training in progress" : "Start training"}
+                </Button>
+              </Group>
+            </Stack>
+          </Card>
+        </Stack>
 
         <TrainingProgress status={status} />
       </div>
-    </section>
+    </Stack>
   );
 }

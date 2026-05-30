@@ -30,6 +30,7 @@ def load_human_logs(limit: int = 100) -> list[dict[str, Any]]:
         raw_output = row.get("model_output", "")
         result.append(
             {
+                "created_at": row.get("created_at") or row.get("timestamp"),
                 "user": row.get("user_text", ""),
                 "candidates": row.get("available_tools", []),
                 "raw_output_summary": textwrap.shorten(raw_output, width=120, placeholder="..."),
@@ -39,6 +40,16 @@ def load_human_logs(limit: int = 100) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def clear_human_logs() -> int:
+    path = get_log_file()
+    if not path.exists():
+        return 0
+
+    rows_deleted = sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+    path.write_text("", encoding="utf-8")
+    return rows_deleted
 
 
 def export_failed_cases_as_dataset(tools_registry: list[dict[str, Any]], limit: int = 100) -> list[dict[str, Any]]:

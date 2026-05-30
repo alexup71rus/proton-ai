@@ -1,3 +1,7 @@
+import { useState } from "react";
+import { Badge, Button, Card, Collapse, Group, Stack, Text } from "@mantine/core";
+import { IconChevronDown, IconChevronRight, IconCode } from "@tabler/icons-react";
+
 import type { LogRow } from "../api";
 
 
@@ -6,45 +10,85 @@ type LogCardProps = {
 };
 
 
+function formatLogTime(value: string | null): string {
+  if (!value) {
+    return "time unknown";
+  }
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  }).format(new Date(timestamp));
+}
+
+
+function resultColor(result: string): string {
+  if (result === "tool_call" || result === "success") {
+    return "green";
+  }
+  if (result === "failed" || result === "error") {
+    return "red";
+  }
+  return "gray";
+}
+
+
 export function LogCard({ row }: LogCardProps) {
+  const [rawOpen, setRawOpen] = useState(false);
+  const visibleCandidates = row.candidates.filter((candidate) => candidate !== "__fallback__");
+  const hasError = Boolean(row.error && row.error !== "none");
+  const showResultBadge = row.result && row.result !== "fallback";
+
   return (
-    <article className="panel log-card">
-      <div className="log-card__header">
-        <div className="log-card__title">
-          <span className="eyebrow">Routing incident</span>
-          <h2>{row.user}</h2>
-        </div>
-        <span className={`status-chip status-chip--${row.result} log-card__status`}>{row.result}</span>
-      </div>
-
-      <div className="log-card__section log-card__section--inline">
-        <strong>Candidates</strong>
-        {row.candidates.length > 0 ? (
-          <div className="chips-wrap">
-            {row.candidates.map((candidate) => (
-              <span key={candidate} className="chip chip--static">
-                {candidate}
-              </span>
-            ))}
+    <Card>
+      <Stack>
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Text size="xs" tt="uppercase" c="dimmed" fw={700}>{formatLogTime(row.created_at)}</Text>
+            <Text fw={700}>{row.user}</Text>
           </div>
-        ) : (
-          <p className="log-card__empty">No candidates captured.</p>
-        )}
-      </div>
+          {showResultBadge ? (
+            <Badge color={resultColor(row.result)}>{row.result.replace("_", " ")}</Badge>
+          ) : null}
+        </Group>
 
-      <div className="log-card__meta">
-        <div>
-          <span>Error</span>
-          <strong>{row.error}</strong>
-        </div>
-      </div>
+        {visibleCandidates.length > 0 ? (
+          <Group gap={6}>
+            {visibleCandidates.map((candidate) => (
+              <Badge key={candidate} variant="light">{candidate}</Badge>
+            ))}
+          </Group>
+        ) : null}
 
-      {row.raw_output ? (
-        <details className="log-card__details">
-          <summary>Show raw model output</summary>
-          <pre>{row.raw_output}</pre>
-        </details>
-      ) : null}
-    </article>
+        {hasError ? (
+          <Card bg="dark.7">
+            <Text size="sm" c="dimmed">Error</Text>
+            <Text size="sm">{row.error}</Text>
+          </Card>
+        ) : null}
+
+        {row.raw_output ? (
+          <Stack gap={6}>
+            <Button
+              variant="subtle"
+              color="gray"
+              justify="flex-start"
+              className="raw-output-toggle"
+              leftSection={rawOpen ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+              rightSection={<IconCode size={16} />}
+              onClick={() => setRawOpen((current) => !current)}
+            >
+              Raw model output
+            </Button>
+            <Collapse in={rawOpen}>
+              <pre className="json-block pre-wrap">{row.raw_output}</pre>
+            </Collapse>
+          </Stack>
+        ) : null}
+      </Stack>
+    </Card>
   );
 }

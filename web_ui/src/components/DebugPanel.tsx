@@ -1,3 +1,5 @@
+import { Accordion, Badge, Card, Code, Group, Stack, Text, Title } from "@mantine/core";
+
 import type { TestResponse } from "../api";
 
 
@@ -7,39 +9,50 @@ type DebugPanelProps = {
 
 
 export function DebugPanel({ debug }: DebugPanelProps) {
+  const defaultItem = debug.validation_error ? "validation" : "validator";
+
   return (
-    <section className="panel debug-panel">
-      <div className="section-heading">
-        <div>
-          <span className="eyebrow">Debug</span>
-          <h2>Routing internals</h2>
-        </div>
-        <div className="tool-list__meta">
-          <span className="pill pill--soft">Action: {debug.final_action}</span>
-        </div>
-      </div>
+    <Card className="debug-card">
+      <Stack gap="md">
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Title order={3}>Debug</Title>
+            <Text size="sm" c="dimmed">
+              Final action: <Code>{debug.final_action}</Code>
+            </Text>
+          </div>
+          <Badge variant="light" color={debug.validation_error ? "red" : "blue"}>
+            {debug.validation_error ? "validation issue" : "valid"}
+          </Badge>
+        </Group>
 
-      <div className="debug-grid">
-        <div className="panel panel--soft debug-card">
-          <strong>Validator result</strong>
-          <pre>{JSON.stringify(debug.validator_result, null, 2)}</pre>
-        </div>
-
-        <div className="panel panel--soft debug-card debug-card--wide">
-          <strong>Serialized prompt</strong>
-          <pre>{debug.serialized_prompt || "-"}</pre>
-        </div>
-
-        <div className="panel panel--soft debug-card debug-card--wide">
-          <strong>Raw model output</strong>
-          <pre>{debug.raw_model_output || "-"}</pre>
-        </div>
-
-        <div className="panel panel--soft debug-card debug-card--wide">
-          <strong>Validation error</strong>
-          <pre>{debug.validation_error || "-"}</pre>
-        </div>
-      </div>
-    </section>
+        <Accordion variant="contained" radius="sm" defaultValue={defaultItem}>
+          <Accordion.Item value="validator">
+            <Accordion.Control>Validator</Accordion.Control>
+            <Accordion.Panel>
+              <pre className="json-block">{JSON.stringify(debug.validator_result, null, 2)}</pre>
+            </Accordion.Panel>
+          </Accordion.Item>
+          <Accordion.Item value="raw">
+            <Accordion.Control>Raw output</Accordion.Control>
+            <Accordion.Panel>
+              <pre className="json-block pre-wrap">{debug.raw_model_output || "-"}</pre>
+            </Accordion.Panel>
+          </Accordion.Item>
+          <Accordion.Item value="validation">
+            <Accordion.Control>Validation error</Accordion.Control>
+            <Accordion.Panel>
+              <pre className="json-block pre-wrap">{debug.validation_error || "-"}</pre>
+            </Accordion.Panel>
+          </Accordion.Item>
+          <Accordion.Item value="prompt">
+            <Accordion.Control>Prompt</Accordion.Control>
+            <Accordion.Panel>
+              <pre className="json-block pre-wrap">{debug.serialized_prompt || "-"}</pre>
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      </Stack>
+    </Card>
   );
 }

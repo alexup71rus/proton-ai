@@ -39,6 +39,24 @@ def test_get_training_status_returns_ui_friendly_shape(monkeypatch, client) -> N
     assert payload["eval_exact"] == 0
 
 
+def test_get_training_status_downsamples_large_loss_history(monkeypatch, client) -> None:
+    monkeypatch.setattr(
+        app_module.service_client,
+        "get_json",
+        lambda path: {
+            "status": "running",
+            "loss_history": list(range(2500)),
+        },
+    )
+
+    response = client.get("/api/training/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["loss_history_total"] == 2500
+    assert len(payload["loss_history"]) == 1000
+
+
 def test_post_training_start_forwards_config(tmp_path: Path, monkeypatch, client) -> None:
     monkeypatch.setenv("PROTONX_DATASET_DIR", str(tmp_path))
     monkeypatch.setenv("PROTONX_WORKSPACE_FILE", str(tmp_path / "workspace.json"))
@@ -152,6 +170,38 @@ def test_post_training_start_rejects_invalid_dataset(tmp_path: Path, monkeypatch
 
     assert response.status_code == 400
     assert "Dataset validation failed" in response.json()["detail"]
+
+
+def test_post_training_start_rejects_existing_new_artifact(tmp_path: Path, monkeypatch, client) -> None:
+    monkeypatch.setenv("PROTONX_WORKSPACE_FILE", str(tmp_path / "workspace.json"))
+    output_root = tmp_path / "artifacts"
+    weights_dir = output_root / "weights"
+    weights_dir.mkdir(parents=True)
+    (weights_dir / "custom_router.pt").write_bytes(b"existing")
+
+    def fail_post_json(path: str, payload: dict) -> dict:
+        raise AssertionError("training service should not be called for an existing artifact")
+
+    monkeypatch.setattr(app_module.service_client, "post_json", fail_post_json)
+
+    response = client.post(
+        "/api/training/start",
+        json={
+            "dataset_name": "routing.jsonl",
+            "epochs": 2,
+            "batch_size": 4,
+            "model_name": "tiny-router",
+            "tokenizer_name": "sentencepiece-bpe",
+            "output_root_dir": str(output_root),
+            "artifact_name": "custom_router",
+            "hidden_dim": 32,
+            "num_layers": 1,
+            "num_heads": 4,
+        },
+    )
+
+    assert response.status_code == 409
+    assert "already exists" in response.json()["detail"]
 
 
 def test_post_training_start_uses_workspace_defaults(tmp_path: Path, monkeypatch, client) -> None:
