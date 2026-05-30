@@ -10,7 +10,6 @@ import {
   Code,
   Divider,
   Group,
-  JsonInput,
   Menu,
   SimpleGrid,
   Stack,
@@ -22,6 +21,9 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight, IconPlus, IconTrash } from "@tabler/icons-react";
+import CodeMirror from "@uiw/react-codemirror";
+import { json } from "@codemirror/lang-json";
+import { oneDark } from "@codemirror/theme-one-dark";
 
 import type {
   JsonSchemaStringArgument,
@@ -998,18 +1000,22 @@ export function ToolEditor({
 
         <Collapse in={rawSchemaOpen}>
           <Stack>
-            <JsonInput
-              label="Raw schema"
-              value={schemaText}
-              onChange={handleSchemaChange}
-              minRows={10}
-              autosize
-              formatOnBlur
-              validationError="Invalid JSON"
-            />
-            <Stack gap="xs">
-              <Text size="sm" fw={500}>Highlighted schema</Text>
-              <HighlightedJson value={schemaText} />
+            <Stack gap={6}>
+              <Text size="sm" fw={500}>Raw schema</Text>
+              <CodeMirror
+                className="json-code-editor"
+                value={schemaText}
+                minHeight="260px"
+                maxHeight="520px"
+                basicSetup={{
+                  foldGutter: true,
+                  highlightActiveLine: true,
+                  lineNumbers: true,
+                }}
+                extensions={[json()]}
+                theme={oneDark}
+                onChange={handleSchemaChange}
+              />
             </Stack>
           </Stack>
         </Collapse>

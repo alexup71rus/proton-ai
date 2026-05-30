@@ -163,6 +163,26 @@ select {
   color: var(--mantine-color-gray-5);
 }
 
+.json-code-editor {
+  border: 1px solid var(--mantine-color-dark-4);
+  border-radius: var(--mantine-radius-sm);
+  overflow: hidden;
+}
+
+.json-code-editor .cm-editor {
+  background: var(--mantine-color-dark-7);
+  font-size: 12px;
+}
+
+.json-code-editor .cm-scroller {
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
+}
+
 .raw-output-toggle {
   border: 1px solid var(--mantine-color-dark-5);
 }
