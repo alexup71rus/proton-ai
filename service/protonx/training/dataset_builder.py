@@ -947,6 +947,17 @@ def _sample_rows(rows: list[dict], target_rows: int | None) -> list[dict]:
     return sampled
 
 
+def _stable_row_shuffle(rows: list[dict], salt: str) -> list[dict]:
+    return sorted(
+        rows,
+        key=lambda row: hashlib.sha1(
+            f"{salt}|{json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}".encode(
+                "utf-8"
+            )
+        ).hexdigest(),
+    )
+
+
 def _sample_balanced_rows(
     tool_rows: list[dict],
     special_rows: list[dict],
@@ -954,7 +965,7 @@ def _sample_balanced_rows(
     fallback_ratio: float,
 ) -> list[dict]:
     if target_rows is None or target_rows <= 0:
-        return _interleave_rows(tool_rows, special_rows)
+        return _stable_row_shuffle(_interleave_rows(tool_rows, special_rows), "all-rows")
     tool_rows_by_name: dict[str, list[dict]] = {}
     class_order: list[str] = []
     for row in tool_rows:
@@ -991,7 +1002,7 @@ def _sample_balanced_rows(
         for rows in sampled_by_name:
             if row_index < len(rows):
                 balanced_rows.append(rows[row_index])
-    return balanced_rows[:target_rows]
+    return _stable_row_shuffle(balanced_rows[:target_rows], "balanced-rows")
 
 
 def build_examples(tools: list[ToolDefinition], target_rows: int | None = None) -> list[dict]:
