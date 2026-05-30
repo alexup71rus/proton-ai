@@ -46,7 +46,6 @@ Fallback тоже возвращается как структурированн
 service/      FastAPI-сервис модели: маршрутизация, проверка, генерация датасета, обучение
 web_backend/  FastAPI-бэкенд интерфейса: настройки, инструменты, датасеты, выполнение, логи
 web_ui/       веб-интерфейс на React/Vite
-web/          старый Streamlit-интерфейс для совместимости
 data/         локальные инструменты, датасеты, веса, токенизаторы, логи, состояние проекта
 repo_docs/    документация проекта на английском и русском
 ```
@@ -180,5 +179,4 @@ python -m pytest --import-mode=importlib service/tests web_backend/tests -q
 - [Индекс документации](repo_docs/README.md)
 - [Руководства на английском](repo_docs/en/README.md)
 - [Руководства на русском](repo_docs/ru/README.md)
-- [Концепция проекта](PROJECT_CONCEPT.ru.md)
 - [Справка по сервису](service/README.md)

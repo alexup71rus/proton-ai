@@ -16,5 +16,3 @@ web_backend/  FastAPI UI backend
 web_ui/       React/Vite web UI
 data/         local tools, datasets, weights, tokenizers, logs
 ```
-
-Retired `web/` Streamlit UI оставлен для совместимости. Для новой работы используется `web_ui`.

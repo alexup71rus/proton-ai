@@ -46,7 +46,6 @@ The bundled tool-calling example is useful when the output must be a structured 
 service/      FastAPI model service: routing, validation, dataset build, training
 web_backend/  FastAPI UI backend: workspace, tools, datasets, execution, logs
 web_ui/       React/Vite web UI
-web/          retired Streamlit UI kept for compatibility
 data/         local tools, datasets, weights, tokenizers, logs, workspace state
 repo_docs/    tracked project documentation in English and Russian
 ```
@@ -180,5 +179,4 @@ Tracked examples and `.gitkeep` files are kept so the expected local directory s
 - [Documentation index](repo_docs/README.md)
 - [English guides](repo_docs/en/README.md)
 - [Russian guides](repo_docs/ru/README.md)
-- [Project concept](PROJECT_CONCEPT.md)
 - [Service reference](service/README.md)

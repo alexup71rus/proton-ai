@@ -1,8 +1,0 @@
-import streamlit as st
-
-
-st.title("Tools")
-st.warning("This Streamlit page is legacy and has been retired.")
-st.markdown("Use the new SPA Tools screen instead of the old Streamlit editor.")
-st.code("cd web_ui && npm run dev", language="bash")
-st.stop()
