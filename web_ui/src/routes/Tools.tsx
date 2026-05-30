@@ -145,7 +145,7 @@ export function ToolsRoute() {
     setFeedback({
       tone: "info",
       title: "Draft tool",
-      body: "Fill name, executor, routing tags and attributes, then validate and save.",
+      body: "Fill name, executor, routing tags and attributes, then save.",
     });
     setSchemaError(null);
   }
@@ -154,13 +154,9 @@ export function ToolsRoute() {
     setActionState("validating");
     setFeedback(null);
     try {
-      const response = await validateTools(tools);
+      await validateTools(tools);
       setValidationState("valid");
-      setFeedback({
-        tone: "success",
-        title: "Registry is valid",
-        body: `${response.tool_count} tools passed validation.`,
-      });
+      setFeedback(null);
     } catch (error) {
       setValidationState("invalid");
       setFeedback({
@@ -174,23 +170,27 @@ export function ToolsRoute() {
   }
 
   async function handleSave() {
-    if (validationState !== "valid") {
+    setActionState("saving");
+    setFeedback(null);
+    try {
+      await validateTools(tools);
+      setValidationState("valid");
+    } catch (error) {
+      setValidationState("invalid");
       setFeedback({
         tone: "error",
-        title: "Validate before saving",
-        body: "Run registry validation from Advanced after your latest changes.",
+        title: "Validation failed",
+        body: error instanceof Error ? error.message : "The service rejected the current registry.",
       });
+      setActionState("idle");
       return;
     }
 
-    setActionState("saving");
-    setFeedback(null);
     try {
       const response = await saveTools(tools);
       setTools(response.tools);
       setSource(response.source);
       setDirty(false);
-      setValidationState("valid");
       setFeedback({
         tone: "success",
         title: "Registry saved",

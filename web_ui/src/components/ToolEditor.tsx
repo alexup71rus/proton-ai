@@ -459,25 +459,14 @@ function storeBoolean(key: string, value: boolean) {
 }
 
 
-function validationBadgeColor(state: ValidationState): string {
+function validateButtonColor(state: ValidationState): string {
   if (state === "valid") {
     return "green";
   }
   if (state === "invalid") {
     return "red";
   }
-  return "yellow";
-}
-
-
-function validationBadgeLabel(state: ValidationState): string {
-  if (state === "valid") {
-    return "validated";
-  }
-  if (state === "invalid") {
-    return "validation failed";
-  }
-  return "needs validation";
+  return "indigo";
 }
 
 
@@ -507,7 +496,7 @@ export function ToolEditor({
   const editorIssues = useMemo(() => getEditorIssues(tool, argumentRows), [argumentRows, tool]);
   const blockingIssues = registryBlockingMessage ? [...editorIssues, registryBlockingMessage] : editorIssues;
   const canRunRegistryAction = actionState === "idle" && !schemaError && blockingIssues.length === 0;
-  const canSave = canRunRegistryAction && validationState === "valid" && dirty;
+  const canSave = canRunRegistryAction && dirty;
   const toolCallPreview = useMemo(() => buildToolCallPreview(tool, argumentRows), [argumentRows, tool]);
 
   function reportSchemaError(message: string | null) {
@@ -645,9 +634,6 @@ export function ToolEditor({
             <Group gap="xs">
               <Title order={3}>{tool.name.trim() || "Untitled draft"}</Title>
               {dirty ? <Badge color="yellow">unsaved</Badge> : <Badge variant="light">saved</Badge>}
-              <Badge color={validationBadgeColor(validationState)} variant="light">
-                {validationBadgeLabel(validationState)}
-              </Badge>
             </Group>
             <Text size="sm" c="dimmed">
               {sourceLabel}{sourcePathLabel ? ` · ${sourcePathLabel}` : ""}
@@ -687,12 +673,6 @@ export function ToolEditor({
         {blockingIssues.length > 0 ? (
           <Alert color="yellow" title="Draft is not ready" icon={<IconAlertCircle size={18} />}>
             {blockingIssues.join(" ")}
-          </Alert>
-        ) : null}
-
-        {dirty && validationState !== "valid" && blockingIssues.length === 0 && !schemaError ? (
-          <Alert color="yellow" title="Validation required" icon={<IconAlertCircle size={18} />}>
-            Run Validate in Advanced before saving the registry.
           </Alert>
         ) : null}
 
@@ -928,7 +908,8 @@ export function ToolEditor({
           </div>
           <Group gap="xs">
             <Button
-              variant="light"
+              variant={validationState === "valid" ? "filled" : "light"}
+              color={validateButtonColor(validationState)}
               leftSection={<IconCheck size={16} />}
               disabled={!canRunRegistryAction}
               loading={actionState === "validating"}
