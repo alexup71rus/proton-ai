@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { type EditorFeedback, ToolEditor } from "../components/ToolEditor";
 import { ToolList } from "../components/ToolList";
+import { compactWorkspacePath } from "../pathDisplay";
 
 
 type ValidationState = "unknown" | "valid" | "invalid";
@@ -32,15 +33,7 @@ function blankTool(): ToolDefinition {
 
 
 function compactPath(path: string | undefined): string {
-  if (!path) {
-    return "data/tools/tools.json";
-  }
-  const marker = "/proton-x/";
-  const markerIndex = path.indexOf(marker);
-  if (markerIndex >= 0) {
-    return path.slice(markerIndex + marker.length);
-  }
-  return path;
+  return compactWorkspacePath(path, "data/tools/tools.json");
 }
 
 

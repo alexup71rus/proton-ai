@@ -65,7 +65,7 @@ from web_backend.tool_executor import execute_tool, validate_tool_executor_paths
 from web_backend.workspace_store import load_workspace_settings, save_workspace_settings, update_workspace_settings
 
 
-app = FastAPI(title="Proton-X UI Backend")
+app = FastAPI(title="Proton AI UI Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -317,7 +317,7 @@ def list_directories(path: str | None = Query(default=".")) -> DirectoryListingR
 @app.get("/api/models/artifact-status", response_model=ModelArtifactStatusResponse)
 def get_model_artifact_status(
     output_root_dir: str = Query(default="data"),
-    artifact_name: str = Query(default="tiny_router_v1"),
+    artifact_name: str = Query(default="router"),
 ) -> ModelArtifactStatusResponse:
     return _build_model_artifact_status(output_root_dir, artifact_name)
 
@@ -510,7 +510,7 @@ async def import_model(
     tokenizer: UploadFile = File(...),
     vocab: UploadFile | None = File(default=None),
     output_root_dir: str = Form(default="data"),
-    artifact_name: str = Form(default="tiny_router_v1"),
+    artifact_name: str = Form(default="router"),
 ) -> ModelImportResponse:
     artifact_status = _build_model_artifact_status(output_root_dir, artifact_name)
     _reject_existing_model_artifact(artifact_status)

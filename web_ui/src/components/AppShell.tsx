@@ -45,10 +45,10 @@ export function AppShell({ navItems, workspaceToolbar, children }: AppShellProps
       <MantineAppShell.Header withBorder>
         <Group h="100%" px="lg" justify="space-between" wrap="nowrap" gap="md">
           <Group gap="sm" wrap="nowrap" miw={170}>
-            <span className="app-logo">PX</span>
+            <span className="app-logo">PA</span>
             <Box>
-              <Title order={4} lh={1.05}>Proton-X</Title>
-              <Text size="xs" c="dimmed">Tiny router workbench</Text>
+              <Title order={4} lh={1.05}>Proton AI</Title>
+              <Text size="xs" c="dimmed">AI constructor</Text>
             </Box>
           </Group>
 

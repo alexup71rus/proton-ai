@@ -26,7 +26,7 @@ def _list_directory_schema() -> dict[str, Any]:
                 "description": "Какую разрешённую директорию показать.",
                 "enum": {
                     "downloads": "папка загрузок текущего пользователя",
-                    "project_root": "корень текущего проекта Proton-X",
+                    "project_root": "корень текущего проекта Proton AI",
                     "service": "FastAPI сервис модели в папке service",
                     "web_backend": "FastAPI backend для UI",
                     "web_ui": "React/Vite интерфейс оператора",

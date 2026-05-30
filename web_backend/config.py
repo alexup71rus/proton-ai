@@ -34,23 +34,23 @@ def _workspace_dataset_dir() -> str | None:
 
 
 def get_tools_file() -> Path:
-    return Path(os.getenv("PROTONX_TOOLS_FILE", ROOT_DIR / "data" / "tools" / "tools.json"))
+    return Path(os.getenv("PROTON_AI_TOOLS_FILE") or os.getenv("PROTONX_TOOLS_FILE", ROOT_DIR / "data" / "tools" / "tools.json"))
 
 
 def get_dataset_dir() -> Path:
-    env_dataset_dir = os.getenv("PROTONX_DATASET_DIR")
+    env_dataset_dir = os.getenv("PROTON_AI_DATASET_DIR") or os.getenv("PROTONX_DATASET_DIR")
     if env_dataset_dir:
         return _resolve_project_path(env_dataset_dir)
     return _resolve_project_path(_workspace_dataset_dir() or DEFAULT_DATASET_DIR)
 
 
 def get_log_file() -> Path:
-    return Path(os.getenv("PROTONX_ROUTER_LOG_FILE", ROOT_DIR / "data" / "logs" / "router.jsonl"))
+    return Path(os.getenv("PROTON_AI_ROUTER_LOG_FILE") or os.getenv("PROTONX_ROUTER_LOG_FILE", ROOT_DIR / "data" / "logs" / "router.jsonl"))
 
 
 def get_workspace_settings_file() -> Path:
-    return Path(os.getenv("PROTONX_WORKSPACE_FILE", ROOT_DIR / "data" / "workspace" / "settings.json"))
+    return Path(os.getenv("PROTON_AI_WORKSPACE_FILE") or os.getenv("PROTONX_WORKSPACE_FILE", ROOT_DIR / "data" / "workspace" / "settings.json"))
 
 
 def get_service_base_url() -> str:
-    return os.getenv("PROTONX_SERVICE_URL", "http://127.0.0.1:8000").rstrip("/")
+    return (os.getenv("PROTON_AI_SERVICE_URL") or os.getenv("PROTONX_SERVICE_URL", "http://127.0.0.1:8000")).rstrip("/")

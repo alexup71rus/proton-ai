@@ -74,6 +74,14 @@ def test_select_training_device_can_force_mps_when_available(monkeypatch):
     assert _select_training_device().type == "mps"
 
 
+def test_select_training_device_prefers_public_env_name(monkeypatch):
+    monkeypatch.setenv("PROTONX_TRAIN_DEVICE", "mps")
+    monkeypatch.setenv("PROTON_AI_TRAIN_DEVICE", "cpu")
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+
+    assert _select_training_device().type == "cpu"
+
+
 def test_select_training_device_can_force_cpu(monkeypatch):
     monkeypatch.setenv("PROTONX_TRAIN_DEVICE", "cpu")
     monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)

@@ -37,6 +37,23 @@ def test_get_datasets_lists_known_jsonl_files(tmp_path: Path, monkeypatch, clien
     assert payload["datasets"][0]["validation_status"] == "valid"
 
 
+def test_get_datasets_prefers_public_env_name(tmp_path: Path, monkeypatch, client) -> None:
+    legacy_dir = tmp_path / "legacy"
+    public_dir = tmp_path / "public"
+    legacy_dir.mkdir()
+    public_dir.mkdir()
+    (public_dir / "routing.jsonl").write_bytes(_valid_dataset_line())
+    monkeypatch.setenv("PROTONX_DATASET_DIR", str(legacy_dir))
+    monkeypatch.setenv("PROTON_AI_DATASET_DIR", str(public_dir))
+
+    response = client.get("/api/datasets")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["dataset_dir"] == str(public_dir)
+    assert payload["datasets"][0]["name"] == "routing.jsonl"
+
+
 def test_get_datasets_uses_workspace_dataset_dir(tmp_path: Path, monkeypatch, client) -> None:
     dataset_dir = tmp_path / "selected"
     dataset_dir.mkdir()

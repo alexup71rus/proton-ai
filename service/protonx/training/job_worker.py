@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> None:
     config = _load_config(Path(args[0]))
     training_device = config.pop("training_device", None)
     if training_device:
-        os.environ["PROTONX_TRAIN_DEVICE"] = str(training_device)
+        os.environ["PROTON_AI_TRAIN_DEVICE"] = str(training_device)
 
     config["dataset_path"] = Path(config["dataset_path"])
     status = run_training(**config)

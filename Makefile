@@ -2,10 +2,10 @@ ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 SERVICE_DIR := $(ROOT_DIR)/service
 WEB_UI_DIR := $(ROOT_DIR)/web_ui
 
-export PROTONX_TOOLS_FILE ?= $(ROOT_DIR)/data/tools/tools.json
-export PROTONX_DATASET_DIR ?= $(ROOT_DIR)/data/train/routing
-export PROTONX_ROUTER_LOG_FILE ?= $(ROOT_DIR)/data/logs/router.jsonl
-export PROTONX_SERVICE_URL ?= http://127.0.0.1:8000
+export PROTON_AI_TOOLS_FILE ?= $(ROOT_DIR)/data/tools/tools.json
+export PROTON_AI_DATASET_DIR ?= $(ROOT_DIR)/data/train/routing
+export PROTON_AI_ROUTER_LOG_FILE ?= $(ROOT_DIR)/data/logs/router.jsonl
+export PROTON_AI_SERVICE_URL ?= http://127.0.0.1:8000
 
 .PHONY: help run-service run-ui-backend run-web-ui run-dev
 

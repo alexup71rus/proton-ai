@@ -4,6 +4,7 @@ data/weights/*
 data/models/*
 data/tokenizers/*
 data/tools/*
+data/logs/*
 data/.gitkeep
 data/workspace/settings.json
 data/workspace/training_*.json
@@ -12,6 +13,7 @@ data/workspace/training_*.json
 !data/models/.gitkeep
 !data/tokenizers/.gitkeep
 !data/tools/.gitkeep
+!data/logs/.gitkeep
 !data/workspace/settings.example.json
 
 # Model artifacts
@@ -46,6 +48,8 @@ Thumbs.db
 # Logs
 *.log
 logs/
+!data/logs/
+!data/logs/.gitkeep
 
 # Docs (local planning / agent scratch space)
 docs/

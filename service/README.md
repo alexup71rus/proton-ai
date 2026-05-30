@@ -1,56 +1,51 @@
-# Proton-X Service
+# Proton AI Model Service
 
-`service/` — FastAPI ядро для обучения и запуска tiny-router модели Proton-X.
+`service/` is the FastAPI model service for Proton AI. It owns model-facing behavior: tool registry validation, prompt construction, model runtime, output validation, dataset bootstrap, training, and training status.
 
-В продуктовой модели Proton-X пользователь описывает свои автоматизации как tools, генерирует dataset и обучает маленькую модель выбирать нужную команду с аргументами. `service/` отвечает именно за модельную часть этого цикла: validation контракта, prompt/runtime path, dataset bootstrap и training.
+Product logic stays outside this service. The UI backend owns workspace settings, tools storage, dataset files, executor paths, execution output, and logs.
 
-Это не chat LLM и не универсальный ассистент. В v1 модель делает одну узкую вещь: получает registry инструментов и текст пользователя, затем генерирует OpenAI-style `tool_calls` JSON. Ответы пользователю, выполнение скриптов, UI state и будущие цепочки действий строятся поверх validated tool execution во внешнем слое.
-
-## Контракт модели
+## Contract
 
 ```text
 tools registry + user_text -> tool_calls JSON
 ```
 
-Пример обычного выбора:
+Regular output:
 
 ```json
 {"tool_calls":[{"name":"get_current_time","arguments":{}}]}
 ```
 
-Fallback тоже является tool call:
+Fallback output:
 
 ```json
 {"tool_calls":[{"name":"__fallback__","arguments":{}}]}
 ```
 
-Модель v1 не пишет обычный текст, fallback copy, объяснения и ответы пользователю. Это делает внешний слой после validation/execution.
+The v1 model does not produce user-facing prose. The outer layer can turn a validated tool call into a response after execution.
 
-## Роль сервиса в Proton-X
+## Responsibilities
 
-`service/` должен оставаться модельным ядром, а не местом для продуктовой логики автоматизации.
+The model service does:
 
-Он отвечает за:
+- validate the supported tool schema subset;
+- build the compact routing prompt;
+- run `ModelRuntime.generate()`;
+- validate JSON output and arguments;
+- return canonical fallback on invalid output;
+- generate bootstrap datasets from a tools registry;
+- train and save checkpoint/tokenizer artifacts;
+- expose public training status with downsampled loss history.
 
-- валидацию tool registry для поддерживаемого schema subset;
-- сборку компактного routing prompt;
-- запуск tiny-router runtime;
-- проверку JSON output и аргументов;
-- canonical fallback при ошибках;
-- генерацию bootstrap dataset;
-- обучение и сохранение checkpoint/tokenizer artifacts.
+The model service does not:
 
-Он не отвечает за:
+- execute user scripts;
+- store UI workspace settings;
+- edit the tools registry;
+- format final user responses;
+- manage a tool marketplace or authoring layer.
 
-- исполнение пользовательских скриптов;
-- хранение UI workspace settings;
-- редактирование tools registry;
-- форматирование человекочитаемых ответов;
-- будущий marketplace/tools authoring слой.
-
-Такое разделение важно для будущей архитектуры: более умная модель или marketplace могут помогать создавать tools и datasets, но маленькая локальная модель должна только выбирать разрешённые tools и аргументы в строгом контракте.
-
-## Runtime path
+## Runtime Path
 
 ```text
 user_text
@@ -61,41 +56,33 @@ user_text
   -> final_output
 ```
 
-Runtime не чинит JSON и не делает constrained scoring по registry. Если модель вернула invalid JSON, validator возвращает ошибку, `final_output` становится canonical fallback для безопасного executor/frontend path, а debug сохраняет сырой `model_output`.
+Invalid JSON, unknown tools, missing required arguments, unsupported enum values, and strict-mode extra arguments are converted to canonical fallback. Raw model output remains available in debug responses.
 
-`/route/preview` возвращает debug этого же прохода: prompt, raw model output, validation result, final action и `final_output`. Поле `repaired_output` оставлено только для API compatibility и в текущем режиме должно быть `null`.
+`/route/preview` returns the same path with debug data: prompt, raw model output, validation result, final action, and final output.
 
-`/chat/completions` — совместимый adapter поверх того же router path. Политика вроде `answer_allowed` относится к adapter/template слою и не попадает в prompt или validator.
+`/chat/completions` is an OpenAI-style adapter on top of the router path.
 
-## Что видит модель
+## Prompt Inputs
 
-В prompt попадают только routing-поля инструмента:
+The prompt includes:
 
 - `name`
 - `tags`
 - compact `args` summary
 
-Не попадают:
+The prompt does not include:
 
-- `description`
-- полный `arguments_schema`
-- executor path/config
-- fallback text
-- response-generation policy
+- executor code;
+- executor path;
+- full backend config;
+- response templates;
+- fallback prose.
 
-Текущая версия prompt/checkpoint compatibility: `compact-v2`.
+Current prompt/checkpoint compatibility: `compact-ru-v1`.
 
-## Validator
+## Training Data
 
-Validator проверяет JSON shape, candidate membership, required arguments, enum values, лишние arguments в strict mode и правило, что `__fallback__` не смешивается с обычными tools.
-
-При ошибке route уходит в canonical fallback output.
-
-Это принципиально для сценария автоматизации: модель может ошибаться, но executor/frontend должны получать безопасный и предсказуемый результат, а не произвольный текст.
-
-## Training data
-
-Основной компактный JSONL формат:
+Recommended compact JSONL row:
 
 ```json
 {
@@ -110,16 +97,16 @@ Validator проверяет JSON shape, candidate membership, required argument
 }
 ```
 
-Legacy chat-shaped rows ещё принимаются для совместимости, но новые данные лучше держать в компактном формате.
+Legacy chat-shaped rows are accepted for compatibility, but new data should use the compact format.
 
-Dataset должен учить модель двум вещам:
+The dataset must teach two behaviors:
 
-- выбирать правильный tool среди доступных candidates;
-- заполнять только валидные аргументы по компактному описанию schema.
+- select the correct tool from the provided candidates;
+- fill only valid arguments from the compact schema summary.
 
-Fallback rows так же важны, как positive rows: они учат модель не вызывать случайную команду, когда запрос не покрывается текущим registry.
+Fallback rows are required. They teach the model not to call a random tool when the request is outside the registry.
 
-## API минимум
+## API
 
 - `GET /health`
 - `POST /tools/validate`
@@ -129,26 +116,24 @@ Fallback rows так же важны, как positive rows: они учат мо
 - `POST /train/start`
 - `GET /train/status`
 
-## Запуск
+## Run
 
-Из корня репозитория:
+From the repository root:
 
 ```bash
 make run-service
 ```
 
-Или вручную:
+Manual run:
 
 ```bash
-cd service
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+(cd service && uvicorn main:app --reload --port 8000)
 ```
 
-## Проверка
+## Test
 
-Из корня репозитория:
+From the repository root:
 
 ```bash
-pytest --import-mode=importlib service/tests web_backend/tests -q
+python -m pytest --import-mode=importlib service/tests -q
 ```

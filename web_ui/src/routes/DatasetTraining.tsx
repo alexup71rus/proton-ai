@@ -29,6 +29,7 @@ import {
 } from "../api";
 import { DirectoryPickerModal } from "../components/DirectoryPickerModal";
 import { TrainingProgress } from "../components/TrainingProgress";
+import { compactWorkspacePath } from "../pathDisplay";
 
 type Notice = {
   tone: "green" | "red" | "blue";
@@ -68,12 +69,7 @@ function formatSha(sha: string | null | undefined): string {
 
 
 function compactPath(path: string): string {
-  const marker = "/proton-x/";
-  const markerIndex = path.indexOf(marker);
-  if (markerIndex >= 0) {
-    return path.slice(markerIndex + marker.length);
-  }
-  return path;
+  return compactWorkspacePath(path);
 }
 
 

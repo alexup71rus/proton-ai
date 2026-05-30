@@ -32,7 +32,7 @@ from protonx.training.tokenizer import train_sentencepiece
 
 IGNORE_INDEX = -100
 DEFAULT_OUTPUT_ROOT_DIR = "data"
-DEFAULT_ARTIFACT_NAME = "tiny_router_v1"
+DEFAULT_ARTIFACT_NAME = "router"
 DEFAULT_VOCAB_SIZE = 512
 MAX_GRAD_NORM = 1.0
 STATE_WRITE_INTERVAL_SECONDS = 2.0
@@ -146,7 +146,7 @@ def _validate_new_model_config(
 
 
 def _select_training_device() -> torch.device:
-    requested_device = os.getenv("PROTONX_TRAIN_DEVICE", "cpu").strip().lower()
+    requested_device = (os.getenv("PROTON_AI_TRAIN_DEVICE") or os.getenv("PROTONX_TRAIN_DEVICE", "cpu")).strip().lower()
     if requested_device in {"cpu", "mps"}:
         if requested_device == "mps" and not torch.backends.mps.is_available():
             return torch.device("cpu")
@@ -594,7 +594,7 @@ def start_training_job(
     )
     env = os.environ.copy()
     if training_device:
-        env["PROTONX_TRAIN_DEVICE"] = training_device
+        env["PROTON_AI_TRAIN_DEVICE"] = training_device
     log_file = _training_job_log_path().open("ab")
     process = subprocess.Popen(
         [

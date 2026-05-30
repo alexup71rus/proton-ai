@@ -73,7 +73,7 @@ class TrainStartRequest(BaseModel):
     model_name: str = "tiny-router"
     tokenizer_name: str = "sentencepiece-bpe"
     output_root_dir: str = "data"
-    artifact_name: str = "tiny_router_v1"
+    artifact_name: str = "router"
     resume_model_path: str | None = None
     resume_tokenizer_path: str | None = None
     hidden_dim: int = 64

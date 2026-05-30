@@ -36,6 +36,7 @@ import { DatasetTrainingRoute } from "./routes/DatasetTraining";
 import { LogsRoute } from "./routes/Logs";
 import { TestRoute } from "./routes/Test";
 import { ToolsRoute } from "./routes/Tools";
+import { compactWorkspacePath } from "./pathDisplay";
 import {
   defaultWorkspaceModel,
   useWorkspaceState,
@@ -127,19 +128,6 @@ function numberOrFallback(value: string | number, fallback: number): number {
 }
 
 
-function compactPath(path: string | undefined): string {
-  if (!path) {
-    return "";
-  }
-  const marker = "/proton-x/";
-  const markerIndex = path.indexOf(marker);
-  if (markerIndex >= 0) {
-    return path.slice(markerIndex + marker.length);
-  }
-  return path;
-}
-
-
 function artifactLookupKey(target: Exclude<RootPickerTarget, null>, outputRootDir: string, artifactName: string): string {
   return `${target}:${outputRootDir.trim()}:${artifactName.trim()}`;
 }
@@ -188,7 +176,7 @@ function getArtifactBlockingMessage(
     return lookup.error || "Could not check artifact name.";
   }
   if (lookup.status?.exists) {
-    return `Artifact "${lookup.status.artifact_name}" already exists in ${compactPath(lookup.status.output_root_dir)}. Choose another name or root.`;
+    return `Artifact "${lookup.status.artifact_name}" already exists in ${compactWorkspacePath(lookup.status.output_root_dir)}. Choose another name or root.`;
   }
   return null;
 }
@@ -216,7 +204,7 @@ function ArtifactStatusNotice({
         <Text size="sm">{blockingMessage}</Text>
         {existingPaths.length > 0 ? (
           <Text size="xs" c="dimmed">
-            Existing files: {existingPaths.map(compactPath).join(", ")}
+            Existing files: {existingPaths.map((path) => compactWorkspacePath(path)).join(", ")}
           </Text>
         ) : null}
       </Stack>
@@ -394,7 +382,7 @@ export function App() {
       setWorkspaceNotice(null);
       setDialog(null);
     } catch (error) {
-      setWorkspaceNotice(error instanceof Error ? error.message : "Не удалось сохранить модель.");
+      setWorkspaceNotice(error instanceof Error ? error.message : "Could not save model draft.");
     }
   }
 
@@ -404,7 +392,7 @@ export function App() {
       return;
     }
     if (!loadDraft.checkpointFile || !loadDraft.tokenizerFile) {
-      setWorkspaceNotice("Выбери checkpoint `.pt` и tokenizer `.model`.");
+      setWorkspaceNotice("Choose checkpoint `.pt` and tokenizer `.model` files.");
       return;
     }
 
@@ -434,7 +422,7 @@ export function App() {
       setWorkspaceNotice(null);
       setDialog(null);
     } catch (error) {
-      setWorkspaceNotice(error instanceof Error ? error.message : "Не удалось загрузить модель.");
+      setWorkspaceNotice(error instanceof Error ? error.message : "Could not load model files.");
     } finally {
       setIsImportingModel(false);
     }

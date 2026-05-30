@@ -1,97 +1,120 @@
-# Proton-X
+# Proton AI
 
-Proton-X — экспериментальная платформа для создания персональных маленьких моделей автоматизации. Идея похожа на macOS/iOS Shortcuts: команды заранее описаны человеком или внешней системой, но выбирать нужную команду и подставлять аргументы должна нейронная модель.
+Proton AI is an AI constructor for building small local tool-routing models. You define tools and executors, generate a supervised dataset, train a tiny router, and test structured tool calls in the web UI.
 
-Сейчас Proton-X не является чат-ботом и не пытается отвечать "из головы". Текущая задача уже: взять набор пользовательских инструментов, сгенерировать под них обучающий датасет, обучить tiny-router модель и проверить, что она стабильно выбирает правильный tool call с аргументами.
+The runtime model does not act as a general chat assistant. Its job is narrow: read a tools registry and user text, then return a valid `tool_calls` JSON object. Validation and execution stay in controlled code outside the model.
 
-Долгосрочно это может стать конструктором локальных автоматизаций: человек скачивает проект, добавляет свои tools/executors, обучает модель под свой набор сценариев и получает маленький специализированный роутер. Более умная облачная модель в будущем может помогать писать tools, расширять датасеты или подбирать примеры, а маленькая локальная модель будет быстро и контролируемо вызывать уже разрешённые команды.
+Russian documentation: [README.ru.md](README.ru.md)
 
-Подробнее о концепции: [PROJECT_CONCEPT.md](PROJECT_CONCEPT.md).
-
-## Текущий контракт v1
+## Model Contract
 
 ```text
 tools registry + user_text -> tool_calls JSON
 ```
 
-Модель получает registry инструментов и текст пользователя. Она смотрит на `name`, `tags` и компактное описание аргументов, затем возвращает структурированный вызов:
+Example tool call:
 
 ```json
 {"tool_calls":[{"name":"get_current_time","arguments":{}}]}
 ```
 
-Если подходящего инструмента нет, модель тоже делает структурированный выбор через синтетический tool:
+Fallback is also a structured tool call:
 
 ```json
 {"tool_calls":[{"name":"__fallback__","arguments":{}}]}
 ```
 
-Человекочитаемый результат приходит от executor/template слоя после вызова инструмента. Это сознательное разделение: модель выбирает действие и аргументы, а реальное выполнение остаётся в контролируемом коде.
-
-Пайплайн:
+The main product loop is:
 
 ```text
-user -> tools registry -> tiny model -> validator -> executor -> response
+define tools -> build dataset -> train model -> test -> inspect logs -> improve dataset
 ```
 
-## Для чего это нужно
+## Why This Exists
 
-Базовый сценарий:
+Many automation systems require a user or developer to pick the exact command. Proton AI changes that step: the user writes a normal request, and a small trained model chooses from the allowed tools.
 
-1. Пользователь описывает свои tools: имя, теги, JSON schema аргументов и executor script.
-2. Proton-X генерирует или принимает JSONL dataset для обучения маршрутизации.
-3. Пользователь обучает tiny-router модель под свой набор команд.
-4. В UI пользователь тестирует запросы, смотрит debug, fallback и ошибки.
-5. Неудачные случаи превращаются в новые dataset rows, после чего модель можно дообучить.
+This is useful when the output must be a structured action rather than free-form text:
 
-Это подходит не только для автоматизации компьютера. Такой же подход можно использовать для классификации, выбора внутренних операций, управления локальными скриптами, интеграций с API или более сложных сценариев, где важно получить не свободный текст, а валидное структурированное действие.
+- local automation commands;
+- internal API operation selection;
+- classification into allowed actions;
+- script orchestration with validated arguments;
+- small offline routers for a fixed tool set.
 
-## Почему tools с аргументами
-
-Можно было бы завести отдельный tool на каждое действие без аргументов: `turn_light_on`, `turn_light_off`, `set_warm_light`, `set_cold_light` и так далее. Это проще для модели, но плохо масштабируется.
-
-Proton-X идёт в сторону нормального разделения:
+## Architecture
 
 ```text
-tool name + structured arguments
+service/      FastAPI model service: routing, validation, dataset build, training
+web_backend/  FastAPI UI backend: workspace, tools, datasets, execution, logs
+web_ui/       React/Vite web UI
+web/          retired Streamlit UI kept for compatibility
+data/         local tools, datasets, weights, tokenizers, logs, workspace state
+repo_docs/    tracked project documentation in English and Russian
 ```
 
-Например один tool `set_light` с аргументами `state`, `temperature` или `room` лучше, чем десятки почти одинаковых tools. Модель становится сложнее, зато registry остаётся компактнее, а будущий marketplace/tools authoring слой может описывать команды в более естественном виде.
+The Python package is still named `protonx` internally. The public project name is `Proton AI`, and the repository slug is `proton-ai`.
 
-## Структура
+## Requirements
 
-```text
-service/      FastAPI сервис модели: routing, validation, training
-web_backend/  FastAPI backend для UI: workspace, tools, datasets, execution
-web_ui/       React + Vite интерфейс оператора
-web/          legacy Streamlit UI
-data/         локальные tools, datasets, weights, tokenizers, logs
+- Python 3.11 or 3.12 recommended
+- Node.js 18+ with npm
+- macOS, Linux, or another environment supported by PyTorch
+
+Use a virtual environment for Python dependencies:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r service/requirements.txt
+python -m pip install -r web_backend/requirements.txt
+python -m pip install -r requirements-dev.txt
+(cd web_ui && npm install)
 ```
 
-Подробности по сервису модели: [service/README.md](service/README.md).
+If your machine uses another Python command, keep the same interpreter for install, tests, and `uvicorn`.
 
-## Документация
+## Run Locally
 
-Карта пользовательских гайдов лежит в [repo_docs/README.md](repo_docs/README.md):
+Start all local processes:
 
-- быстрый старт и запуск сервисов;
-- рабочий цикл tools -> dataset -> training -> test -> logs;
-- формат tools registry и аргументов;
-- datasets, обучение, артефакты и evaluation.
+```bash
+make run-dev
+```
 
-## Как сделать модель под себя
+Or run them separately:
 
-Минимальный путь:
+```bash
+make run-service
+make run-ui-backend
+make run-web-ui
+```
 
-1. Описать tools в UI или в `data/tools/tools.json`.
-2. Для каждого tool указать безопасный `executor_path`.
-3. Сгенерировать bootstrap dataset на странице Dataset + Training.
-4. При необходимости добавить ручные examples или импортировать свой JSONL.
-5. Запустить обучение.
-6. Проверить модель на странице Test.
-7. Разобрать Logs и добавить новые failed/fallback cases в dataset.
+Local URLs:
 
-Текущий compact JSONL формат строки:
+- `http://127.0.0.1:8000/health` - model service
+- `http://127.0.0.1:8100/health` - UI backend
+- `http://localhost:8501` - web UI
+
+The web UI pages are:
+
+- **Tools** - edit the tools registry and executor paths.
+- **Training** - import or generate datasets, validate them, and start training.
+- **Test** - run user text through the selected model and inspect validation/execution output.
+- **Logs** - inspect routing incidents and export failed cases into dataset drafts.
+
+## Build A Model
+
+1. Add tools in the **Tools** page or edit `data/tools/tools.json`.
+2. Use safe, trusted `executor_path` values.
+3. Open **Training** and choose the dataset storage folder.
+4. Import a compact JSONL dataset or generate a bootstrap dataset from the tools registry.
+5. Train a new model.
+6. Test real requests on the **Test** page.
+7. Use **Logs** to find missing phrases, aliases, argument values, and fallback cases.
+
+Compact JSONL row:
 
 ```json
 {
@@ -106,47 +129,46 @@ data/         локальные tools, datasets, weights, tokenizers, logs
 }
 ```
 
-## Запуск
+## Environment Variables
+
+`PROTON_AI_*` variables are the public names. Older `PROTONX_*` names still work for compatibility.
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `PROTON_AI_TOOLS_FILE` | tools registry file | `data/tools/tools.json` |
+| `PROTON_AI_DATASET_DIR` | dataset storage folder | `data/train/routing` |
+| `PROTON_AI_ROUTER_LOG_FILE` | router log JSONL file | `data/logs/router.jsonl` |
+| `PROTON_AI_WORKSPACE_FILE` | UI workspace settings file | `data/workspace/settings.json` |
+| `PROTON_AI_SERVICE_URL` | model service URL used by UI backend | `http://127.0.0.1:8000` |
+| `PROTON_AI_TRAIN_DEVICE` | training device override | `cpu` |
+| `PROTON_AI_TRAIN_STATE_PATH` | training status file | `data/workspace/training_state.json` |
+
+## Verification
 
 ```bash
-cd service && pip install -r requirements.txt
-cd ../web_backend && pip install -r requirements.txt
-cd ../web_ui && npm install
+python -m pytest --import-mode=importlib service/tests web_backend/tests -q
+(cd web_ui && npm run build)
 ```
 
-Из корня репозитория:
+The long synthetic dataset tests are useful before changing dataset generation logic, but they are not required for routine UI/backend edits.
 
-```bash
-make run-service
-make run-ui-backend
-make run-web-ui
-```
+## Publishing Notes
 
-Или все процессы сразу:
+For a public release, keep generated state out of git:
 
-```bash
-make run-dev
-```
+- `data/train/*`
+- `data/weights/*`
+- `data/tokenizers/*`
+- `data/tools/*`
+- `data/logs/*`
+- `data/workspace/settings.json`
 
-Адреса:
+Tracked examples and `.gitkeep` files are kept so the expected local directory structure is visible.
 
-- `http://127.0.0.1:8000/health` — model service
-- `http://127.0.0.1:8100/health` — UI backend
-- `http://localhost:8501` — web UI
+## Documentation
 
-В UI есть страницы:
-
-- **Tools** — редактирование registry инструментов и executor paths.
-- **Dataset + Training** — генерация, импорт, проверка dataset и запуск обучения/дообучения.
-- **Test** — проверка маршрутизации, аргументов, validator output и executor output.
-- **Logs** — fallback/error cases для улучшения dataset.
-
-Состояние UI хранится на backend в локальном `data/workspace/settings.json`.
-Этот файл не коммитится; пример структуры лежит в [data/workspace/settings.example.json](data/workspace/settings.example.json).
-
-## Проверка
-
-```bash
-pytest --import-mode=importlib service/tests web_backend/tests -q
-cd web_ui && npm run build
-```
+- [Documentation index](repo_docs/README.md)
+- [English guides](repo_docs/en/README.md)
+- [Russian guides](repo_docs/ru/README.md)
+- [Project concept](PROJECT_CONCEPT.md)
+- [Service reference](service/README.md)

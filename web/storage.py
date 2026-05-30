@@ -11,7 +11,7 @@ DATA_DIR = ROOT_DIR / "data"
 DATASET_DIR = DATA_DIR / "train" / "routing"
 LOG_FILE = DATA_DIR / "logs" / "router.jsonl"
 TOOLS_FILE = Path(
-    os.getenv("PROTONX_TOOLS_FILE", str(DATA_DIR / "tools" / "tools.json"))
+    os.getenv("PROTON_AI_TOOLS_FILE") or os.getenv("PROTONX_TOOLS_FILE", str(DATA_DIR / "tools" / "tools.json"))
 )
 
 

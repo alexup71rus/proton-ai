@@ -13,8 +13,8 @@ from protonx.training.format import serialize_inference_prompt
 
 
 MODEL_RUNTIME = ModelRuntime(
-    Path(WEIGHTS_DIR) / "proton_router_v1.pt",
-    Path(TOKENIZER_DIR) / "proton_router_v1.model",
+    Path(WEIGHTS_DIR) / "router.pt",
+    Path(TOKENIZER_DIR) / "router.model",
 )
 
 
@@ -43,10 +43,10 @@ def _sync_model_runtime_paths(
 
     next_weights_path = resolve_artifact_path(
         model_path,
-        Path(WEIGHTS_DIR) / "proton_router_v1.pt",
+        Path(WEIGHTS_DIR) / "router.pt",
     )
     next_tokenizer_path = (
-        resolve_artifact_path(tokenizer_path, Path(TOKENIZER_DIR) / "proton_router_v1.model")
+        resolve_artifact_path(tokenizer_path, Path(TOKENIZER_DIR) / "router.model")
     )
     if (
         MODEL_RUNTIME.weights_path != next_weights_path

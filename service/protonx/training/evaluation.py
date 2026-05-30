@@ -146,7 +146,7 @@ ARGUMENT_HOLDOUT_EXAMPLES: dict[str, list[dict[str, Any]]] = {
         {
             "arguments": {"directory": "project_root"},
             "requests": [
-                "покажи файлы верхнего уровня proton x",
+                "покажи файлы верхнего уровня proton ai",
                 "что лежит рядом с README проекта",
                 "выведи корневую папку этого репозитория",
             ],

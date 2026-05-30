@@ -162,11 +162,11 @@ class WorkspaceModelSettings(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     mode: Literal["new", "loaded"] = "new"
-    label: str = "tiny_router_v1"
+    label: str = "router"
     model_name: str = "tiny-router"
     tokenizer_name: str = "sentencepiece-bpe"
     output_root_dir: str = "data"
-    artifact_name: str = "tiny_router_v1"
+    artifact_name: str = "router"
     model_path: str | None = None
     tokenizer_path: str | None = None
     hidden_dim: int = 64
@@ -257,7 +257,7 @@ class TrainingStatusResponse(BaseModel):
     model_name: str = "tiny-router"
     tokenizer_name: str = "sentencepiece-bpe"
     output_root_dir: str | None = None
-    artifact_name: str = "tiny_router_v1"
+    artifact_name: str = "router"
     checkpoint_path: str | None = None
     model_path: str | None = None
     tokenizer_path: str | None = None

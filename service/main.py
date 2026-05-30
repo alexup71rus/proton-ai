@@ -15,7 +15,7 @@ from protonx.training.trainer import get_training_status
 from protonx.training.trainer import start_training_job
 from protonx.tools import validate_supported_schema_subset, validate_unique_tool_names
 
-app = FastAPI(title="Proton-X LLM Service")
+app = FastAPI(title="Proton AI Model Service")
 
 
 @app.get("/health")
@@ -25,7 +25,7 @@ def health():
 
 @app.get("/")
 def root():
-    return {"service": "proton-x-llm", "version": "0.1.0"}
+    return {"service": "proton-ai-model-service", "version": "0.1.0"}
 
 
 @app.post("/tools/validate", response_model=ToolRegistryResponse)

@@ -1,18 +1,19 @@
 {
   "selected_model": {
     "mode": "loaded",
-    "label": "proton_router_v1",
+    "label": "router",
     "model_name": "tiny-router",
     "tokenizer_name": "sentencepiece-bpe",
     "output_root_dir": "data",
-    "artifact_name": "proton_router_v1",
-    "model_path": "data/weights/proton_router_v1.pt",
-    "tokenizer_path": "data/tokenizers/proton_router_v1.model",
+    "artifact_name": "router",
+    "model_path": "data/weights/router.pt",
+    "tokenizer_path": "data/tokenizers/router.model",
     "hidden_dim": 256,
     "num_layers": 4,
     "num_heads": 8
   },
   "training": {
+    "dataset_dir": "data/train/routing",
     "dataset_name": "routing.jsonl",
     "epochs": 3,
     "batch_size": 8,

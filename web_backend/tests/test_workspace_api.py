@@ -13,7 +13,7 @@ def test_get_workspace_creates_default_file(tmp_path: Path, monkeypatch, client)
     assert response.status_code == 200
     payload = response.json()
     assert payload["storage_path"] == str(workspace_path)
-    assert payload["selected_model"]["artifact_name"] == "tiny_router_v1"
+    assert payload["selected_model"]["artifact_name"] == "router"
     assert payload["training"] == {
         "dataset_dir": "data/train/routing",
         "dataset_name": "routing.jsonl",

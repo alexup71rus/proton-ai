@@ -14,6 +14,18 @@ if str(ROOT_DIR) not in sys.path:
 from web_backend.app import app  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def clear_public_proton_ai_env(monkeypatch) -> None:
+    for name in (
+        "PROTON_AI_TOOLS_FILE",
+        "PROTON_AI_DATASET_DIR",
+        "PROTON_AI_ROUTER_LOG_FILE",
+        "PROTON_AI_WORKSPACE_FILE",
+        "PROTON_AI_SERVICE_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)

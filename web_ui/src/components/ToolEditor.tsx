@@ -31,6 +31,7 @@ import type {
   ToolDefinition,
   ToolsSource,
 } from "../api";
+import { compactWorkspacePath } from "../pathDisplay";
 import { HighlightedJson } from "./HighlightedJson";
 
 
@@ -356,15 +357,7 @@ function makeUniqueArgumentName(name: string, rows: ArgumentEditorRow[]): string
 
 
 function compactPath(path: string | undefined): string {
-  if (!path) {
-    return "";
-  }
-  const marker = "/proton-x/";
-  const markerIndex = path.indexOf(marker);
-  if (markerIndex >= 0) {
-    return path.slice(markerIndex + marker.length);
-  }
-  return path;
+  return compactWorkspacePath(path);
 }
 
 

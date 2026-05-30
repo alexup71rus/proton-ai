@@ -1,40 +1,42 @@
-# Proton-X Project Concept
+# Proton AI Project Concept
 
-Proton-X строится как конструктор персональных tiny-router моделей для автоматизации. Ближайшая аналогия — macOS/iOS Shortcuts, но вместо ручного выбора действия пользователь пишет обычный запрос, а маленькая нейронная модель выбирает нужную команду и аргументы.
+Proton AI is an AI constructor for specialized local automation models. The user defines the allowed tools, builds a dataset, trains a small router model, and keeps execution under explicit local control.
 
-## Что строим сейчас
+The closest product analogy is Shortcuts-style automation with a model in the selection step. Instead of asking the user to pick the exact action, Proton AI lets the user write a normal request and trains a small model to choose the matching tool and arguments.
 
-Текущий v1 — это не чат-бот. Модель не должна рассуждать вслух, писать ответы, придумывать действия или исполнять код. Она должна вернуть только строгий JSON:
+Russian version: [PROJECT_CONCEPT.ru.md](PROJECT_CONCEPT.ru.md)
+
+## Current Scope
+
+Version 1 is not a chat assistant. The model must not produce free-form answers, invent tools, or execute code. It returns one strict JSON shape:
 
 ```json
 {"tool_calls":[{"name":"tool_name","arguments":{}}]}
 ```
 
-Дальше результат проходит validator. Только после этого внешний слой может вызвать executor script и показать человеку ответ.
+The output then goes through validation. Only validated output can reach the executor layer.
 
-Главный цикл продукта:
+Product loop:
 
 ```text
-write tools -> generate dataset -> train tiny model -> test -> inspect logs -> improve dataset
+define tools -> build dataset -> train tiny router -> test -> inspect logs -> improve dataset
 ```
 
-## Пользовательский сценарий
+## User Flow
 
-Пользователь хочет модель под себя:
+1. Clone `proton-ai`.
+2. Define tools with `name`, `tags`, argument schema, and executor path.
+3. Generate a bootstrap dataset from the tools registry.
+4. Add real examples when the bootstrap dataset misses user language.
+5. Train a small router model.
+6. Test requests in the web UI.
+7. Use fallback/error logs to improve the dataset.
 
-1. Скачивает или клонирует Proton-X.
-2. Описывает свои tools: `name`, `tags`, schema аргументов и executor path.
-3. Генерирует bootstrap dataset из tools registry.
-4. Добавляет свои examples, если bootstrap недостаточно покрывает реальные фразы.
-5. Обучает tiny-router модель.
-6. Тестирует запросы в UI.
-7. Собирает fallback/error logs и улучшает dataset.
+Result: a local model that chooses only from the user's allowed tools.
 
-Итог: локальная маленькая модель знает только его набор команд и выбирает только из разрешённого registry.
+## Why Structured Arguments Matter
 
-## Почему не миллион tools без аргументов
-
-Самый простой путь — создать отдельный tool на каждую комбинацию действия:
+The simplest implementation would create a separate tool for each action variant:
 
 ```text
 turn_light_on
@@ -44,42 +46,43 @@ set_light_cold
 set_kitchen_light_warm
 ```
 
-Это облегчает задачу модели, но быстро ломает масштабирование. Registry становится большим, похожие действия дублируются, а новые сценарии требуют всё больше почти одинаковых tools.
+That reduces model difficulty, but it does not scale. The registry grows quickly, similar actions are duplicated, and new scenarios require more single-purpose tools.
 
-Целевой подход Proton-X:
+The target contract is:
 
 ```text
 tool name + structured arguments
 ```
 
-Например:
+Example:
 
 ```json
 {"tool_calls":[{"name":"set_light","arguments":{"room":"kitchen","temperature":"warm"}}]}
 ```
 
-Так модель должна решать более сложную задачу, зато tool registry остаётся ближе к реальным API и скриптам.
+This makes the routing task harder, but the tools registry stays closer to real APIs and scripts.
 
-## Границы безопасности
+## Safety Boundary
 
-Команды не появляются магически. Их явно описывает человек или будущий trusted tool authoring слой. Модель выбирает только из переданного registry, а executor path остаётся вне prompt.
+Tools are explicit. They come from the user or a trusted authoring layer. The model sees routing metadata, but it does not see executor code and cannot create new executor paths.
 
-Это разделение нужно сохранить:
+The boundary is:
 
-- модель выбирает intent и arguments;
-- validator проверяет contract;
-- executor выполняет заранее разрешённый код;
-- logs показывают, где модель не справилась.
+- model selects intent and arguments;
+- validator checks contract, tool membership, required fields, and enum values;
+- executor runs trusted local code;
+- logs show where the model failed.
 
-## Возможное будущее
+This boundary is the main reason Proton AI can be useful as an automation constructor without turning the runtime model into a general autonomous agent.
 
-Следующие направления укладываются в текущую архитектуру:
+## Future Direction
 
-- облачная сильная модель помогает писать tools и executor scripts;
-- облачная модель расширяет training dataset реальными формулировками;
-- маленькая локальная модель остаётся runtime router;
-- появляется marketplace готовых tools;
-- пользователь собирает собственный набор automation packs;
-- поверх single tool call появляются цепочки действий, но только после надёжного v1 routing.
+The current architecture leaves room for stronger authoring support:
 
-Главная идея остаётся прежней: Proton-X должен помогать человеку быстро получить маленькую модель под свой набор действий, не превращая её в неконтролируемого общего ассистента.
+- a larger model can help write tools and executor scripts;
+- a larger model can expand datasets with realistic phrasing;
+- the small local model remains the runtime router;
+- reusable tool packs can be shared;
+- multi-step workflows can be added after single-step routing is reliable.
+
+The core rule stays the same: the trained runtime model chooses from allowed tools and returns validated structured output.

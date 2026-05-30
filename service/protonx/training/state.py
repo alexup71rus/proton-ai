@@ -61,7 +61,7 @@ class TrainingState:
     model_name: str = "tiny-router"
     tokenizer_name: str = "sentencepiece-bpe"
     output_root_dir: str | None = None
-    artifact_name: str = "tiny_router_v1"
+    artifact_name: str = "router"
     checkpoint_path: str | None = None
     model_path: str | None = None
     tokenizer_path: str | None = None
@@ -133,7 +133,7 @@ TRAINING_STATE = TrainingState()
 
 
 def training_state_path() -> Path:
-    raw_path = os.getenv("PROTONX_TRAIN_STATE_PATH")
+    raw_path = os.getenv("PROTON_AI_TRAIN_STATE_PATH") or os.getenv("PROTONX_TRAIN_STATE_PATH")
     if raw_path:
         return Path(raw_path).expanduser()
     return DATA_DIR / "workspace" / "training_state.json"

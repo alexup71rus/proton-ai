@@ -144,7 +144,7 @@ def test_post_training_start_normalizes_partial_service_payload(tmp_path: Path, 
     assert payload["dataset_row_count"] == 0
     assert payload["eval_total"] == 0
     assert payload["output_root_dir"] is None
-    assert payload["artifact_name"] == "tiny_router_v1"
+    assert payload["artifact_name"] == "router"
 
 
 def test_post_training_start_rejects_invalid_dataset(tmp_path: Path, monkeypatch, client) -> None:

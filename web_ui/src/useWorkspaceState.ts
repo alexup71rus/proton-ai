@@ -17,11 +17,11 @@ export type WorkspaceLoadState = "loading" | "ready" | "error";
 export function defaultWorkspaceModel(): WorkspaceModel {
   return {
     mode: "new",
-    label: "tiny_router_v1",
+    label: "router",
     model_name: "tiny-router",
     tokenizer_name: "sentencepiece-bpe",
     output_root_dir: "data",
-    artifact_name: "tiny_router_v1",
+    artifact_name: "router",
     model_path: null,
     tokenizer_path: null,
     hidden_dim: 64,
